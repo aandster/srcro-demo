@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Collection Routing Demo</title>
+<meta name="description" content="Seeing Reuse: Collection Routing Optimisation. Distance-only and emissions-aware planning side by side on one illustrative run.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="masthead">
+  <p class="kicker">SENG4001 Honours Capstone, University of Newcastle, 2026</p>
+  <h1>Seeing Reuse: Collection Routing Optimisation</h1>
+  <p class="sub">Distance-only planning beside emissions-aware planning, on the same requests, the same day and the same fleet.</p>
+  <p class="illustration" id="illustration" role="note">One illustrative run, not a result</p>
+</header>
+
+<main>
+  <section class="explain" aria-labelledby="explain-h">
+    <h2 id="explain-h">What am I looking at</h2>
+    <p>Residents of Newcastle book collections of reusable items. Each business day a planner chooses which requests to collect and routes four trucks. The left map is a planner that only cares about kilometres. The right map is the same planner told to care about carbon dioxide equivalent (CO2-e) instead, where an electric kilometre emits nothing at the tailpipe and a diesel kilometre does. Both face exactly the same requests. Diesel routes are <span class="key diesel">vermillion and dashed</span>, electric routes are <span class="key electric">blue and solid</span>. Use the day slider or Play to replay the run, and the fleet buttons to change how many of the four trucks are electric. The requests are synthetic and every figure here comes from one illustrative run. The tested results are on the poster.</p>
+  </section>
+
+  <section class="controls" aria-label="Controls">
+    <fieldset class="fleet">
+      <legend>Electric trucks of four</legend>
+      <div id="fleet-buttons" class="seg" role="group"></div>
+    </fieldset>
+    <div class="replay">
+      <button id="play" type="button" aria-pressed="false">Play</button>
+      <label for="day">Day <output id="day-label" for="day">1 of 1</output></label>
+      <input id="day" type="range" min="1" max="1" value="1" step="1">
+    </div>
+    <label class="toggle"><input id="street" type="checkbox"> Street map (needs internet)</label>
+    <p id="source-note" class="source-note" hidden></p>
+  </section>
+
+  <section class="maps">
+    <article class="arm" aria-labelledby="h-distance">
+      <h2 id="h-distance">Distance-only planning</h2>
+      <div id="map-distance" class="map" role="img" aria-label="Map of the distance-only routes for the selected day"></div>
+      <dl class="kpis" id="kpi-distance"></dl>
+    </article>
+    <article class="arm" aria-labelledby="h-emissions">
+      <h2 id="h-emissions">Emissions-aware planning</h2>
+      <div id="map-emissions" class="map" role="img" aria-label="Map of the emissions-aware routes for the selected day"></div>
+      <dl class="kpis" id="kpi-emissions"></dl>
+    </article>
+  </section>
+
+  <section class="compare" aria-labelledby="compare-h">
+    <h2 id="compare-h">Difference, emissions-aware minus distance-only</h2>
+    <div id="diff" class="diff"></div>
+    <h3>This day</h3>
+    <table id="day-table" class="day-table">
+      <caption class="visually-hidden">Figures for the selected day in each plan</caption>
+      <thead><tr><th scope="col">Figure</th><th scope="col">Distance-only</th><th scope="col">Emissions-aware</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <ul class="legend" aria-label="Map legend">
+      <li><svg width="40" height="10" aria-hidden="true"><line x1="0" y1="5" x2="40" y2="5" stroke="#D55E00" stroke-width="4" stroke-dasharray="8 5"/></svg> Diesel truck route</li>
+      <li><svg width="40" height="10" aria-hidden="true"><line x1="0" y1="5" x2="40" y2="5" stroke="#0072B2" stroke-width="4"/></svg> Electric truck route</li>
+      <li><svg width="14" height="14" aria-hidden="true"><rect x="1" y="1" width="12" height="12" fill="#15181C"/></svg> Depot</li>
+      <li><svg width="40" height="10" aria-hidden="true"><line x1="0" y1="5" x2="40" y2="5" stroke="#B9C0C8" stroke-width="3"/></svg> Major road</li>
+    </ul>
+  </section>
+
+  <section class="live" id="live" aria-labelledby="live-h">
+    <h2 id="live-h">Live re-plan</h2>
+    <p id="live-off" class="live-off">Live re-plan runs on the presenter's laptop. Ask at the stand to try it.</p>
+    <form id="live-form" hidden>
+      <p>Run the real planner now on a new short scenario, both plans at once. It takes about a minute.</p>
+      <div class="live-grid">
+        <label for="live-seed">Scenario number</label>
+        <input id="live-seed" type="number" min="1" max="2147483647" step="1" value="7" inputmode="numeric">
+        <label class="inline"><input id="live-random" type="checkbox"> New random scenario</label>
+        <label for="live-fleet">Electric trucks of four</label>
+        <select id="live-fleet"><option>0</option><option selected>1</option><option>2</option><option>3</option><option>4</option></select>
+        <label for="live-arrivals">Requests a day (10 to 40)</label>
+        <input id="live-arrivals" type="number" min="10" max="40" step="1" value="25" inputmode="numeric">
+      </div>
+      <button id="live-go" type="submit">Re-plan now</button>
+      <button id="live-back" type="button" hidden>Back to the recorded run</button>
+      <div class="progress" aria-live="polite">
+        <progress id="live-progress" max="1" value="0" hidden></progress>
+        <span id="live-status"></span>
+      </div>
+    </form>
+  </section>
+</main>
+
+<footer class="foot">
+  <p>Tier-1 CO2-e is distance times a per-vehicle factor, diesel 1000 g per km (unsourced for this truck), electric 0 g per km at the tailpipe. Requests, volumes and locations are synthetic. No claim of minimal emissions. <span id="meta-line"></span></p>
+</footer>
+
+<!-- Leaflet 1.9.4 is the only external script (task 063). A local copy in vendor/ is the
+     offline fallback, added on the laptop (docs/DEMO.md). -->
+<!-- The integrity hash is cdnjs's published sha512 for this file, and equal to the hash of
+     vendor/leaflet.js (checked 2026-10-31). A changed file fails to load and the page falls back
+     to the local copy below. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"
+        integrity="sha512-puJW3E/qXDqYp9IfhAI54BJEaWIfloJ7JWs7OeD5i6ruC9JZL1gERT1wjtwXFlh7CjE7ZJ+/vcRZRkIYIb6p4g==" crossorigin="anonymous"></script>
+<script>if (!window.L) document.write('<script src="vendor/leaflet.js"><\/script>');</script>
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
