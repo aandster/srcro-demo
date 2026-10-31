@@ -115,6 +115,8 @@ button:disabled { opacity: .55; cursor: not-allowed; }
   font: inherit; min-height: 44px; padding: 0 8px; border: 1px solid var(--rule); border-radius: 6px;
   background: var(--panel); color: var(--ink);
 }
+/* A display rule beats the hidden attribute, so the live panel's forms say it again. */
+.live-hosted [hidden], .live [hidden] { display: none !important; }
 .live-server { margin: 0 0 10px; }
 .live-unlock, #admin-form { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin: 0 0 12px; }
 .live-unlock input, #admin-form input {
