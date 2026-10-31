@@ -68,6 +68,24 @@
   <section class="live" id="live" aria-labelledby="live-h">
     <h2 id="live-h">Live re-plan</h2>
     <p id="live-off" class="live-off">Live re-plan runs on the presenter's laptop. Ask at the stand to try it.</p>
+    <div id="live-hosted" class="live-hosted" hidden>
+      <p id="live-server" class="live-server" aria-live="polite">Checking the live server</p>
+      <form id="live-unlock" class="live-unlock">
+        <label for="live-pass">Demo password</label>
+        <input id="live-pass" type="password" autocomplete="off" required>
+        <button type="submit">Unlock</button>
+        <span id="live-unlock-msg" aria-live="polite"></span>
+      </form>
+      <details class="admin">
+        <summary>Presenter controls</summary>
+        <form id="admin-form">
+          <label for="admin-pass">Admin password</label>
+          <input id="admin-pass" type="password" autocomplete="current-password" required>
+          <button id="admin-start" type="submit">Start live server</button>
+          <span id="admin-msg" aria-live="polite"></span>
+        </form>
+      </details>
+    </div>
     <form id="live-form" hidden>
       <p>Run the real planner now on a new short scenario, both plans at once. It takes about a minute.</p>
       <div class="live-grid">
@@ -102,6 +120,9 @@
         integrity="sha512-puJW3E/qXDqYp9IfhAI54BJEaWIfloJ7JWs7OeD5i6ruC9JZL1gERT1wjtwXFlh7CjE7ZJ+/vcRZRkIYIb6p4g==" crossorigin="anonymous"></script>
 <script>if (!window.L) document.write('<script src="vendor/leaflet.js"><\/script>');</script>
 <script src="data.js"></script>
+<!-- Addresses of the web live re-plan (scripts/cloud/live_replan/). Absent or empty, the hosted
+     page keeps the "presenter's laptop" line. -->
+<script src="live-config.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

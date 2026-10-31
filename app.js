@@ -252,19 +252,21 @@
 
   // ---------------------------------------------------------------- live re-plan
 
-  function liveSetup() {
-    // Only a page served by scripts/demo_server.py can reach the API. Opened from disk or
-    // hosted, the panel keeps its "runs on the presenter's laptop" line.
-    if (location.protocol !== "http:" || !/^(127\.0\.0\.1|localhost)$/.test(location.hostname)) return;
-    fetch("/api/health", { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (h) {
-      if (!h.live) {
-        $("live-off").textContent = "Live re-plan is off, the routing services are not running on this laptop.";
-        return;
-      }
-      $("live-off").hidden = true;
-      $("live-form").hidden = false;
-    }).catch(function () { /* no server, keep the hosted wording */ });
+  // Where the live API is. On the laptop it is the same origin with no password. On the hosted
+  // page it is the proxy function of scripts/cloud/live_replan/, and every call carries the
+  // demo password, which the proxy checks (the page itself checks nothing, it can be read).
+  var LIVE = { api: "", pass: "" };
+  function liveFetch(path, opts) {
+    opts = opts || {};
+    var h = { "Content-Type": "application/json" };
+    if (LIVE.pass) h["X-Demo-Password"] = LIVE.pass;
+    return fetch(LIVE.api + path, { method: opts.method || "GET", headers: h, body: opts.body, cache: "no-store" });
+  }
+  function store(key, value) {   // per-tab convenience only, the page works without it
+    try { if (value === undefined) return sessionStorage.getItem(key); sessionStorage.setItem(key, value); } catch (e) { return null; }
+  }
 
+  function liveSetup() {
     $("live-random").addEventListener("change", function () { $("live-seed").disabled = this.checked; });
     $("live-back").addEventListener("click", function () { useData(recorded, false); $("live-status").textContent = ""; });
     $("live-form").addEventListener("submit", function (ev) {
@@ -276,21 +278,121 @@
       };
       $("live-go").disabled = true;
       $("live-status").textContent = "Starting both plans";
-      fetch("/api/replan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
-        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      liveFetch("/api/replan", { method: "POST", body: JSON.stringify(body) })
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, code: r.status, j: j }; }); })
         .then(function (res) {
+          if (res.code === 401) { relock("The demo password was not accepted."); }
           if (!res.ok) throw new Error(res.j.error || "the re-plan could not start");
           poll(res.j.id);
         })
         .catch(function (e) { $("live-go").disabled = false; $("live-status").textContent = "Could not start: " + e.message; });
     });
+
+    var local = location.protocol === "http:" && /^(127\.0\.0\.1|localhost)$/.test(location.hostname);
+    if (local) {
+      // Served by scripts/demo_server.py on the laptop, task 063's path, unchanged.
+      liveFetch("/api/health").then(function (r) { return r.json(); }).then(function (h) {
+        if (!h.live) {
+          $("live-off").textContent = "Live re-plan is off, the routing services are not running on this laptop.";
+          return;
+        }
+        $("live-off").hidden = true;
+        $("live-form").hidden = false;
+      }).catch(function () { /* no server, keep the hosted wording */ });
+      return;
+    }
+    var cfg = window.SRCRO_LIVE;
+    if (!cfg || !cfg.proxy || !cfg.control) return;   // no web live re-plan configured
+    LIVE.api = cfg.proxy.replace(/\/$/, "");
+    hostedSetup(cfg.control.replace(/\/$/, ""));
+  }
+
+  // ---- hosted page: server status, unlock with the demo password, presenter start
+
+  var hosted = { control: "", server: null, unlocked: false, timer: null };
+
+  function sydneyTime(iso) {
+    return new Date(iso).toLocaleTimeString("en-AU", { timeZone: "Australia/Sydney", hour: "numeric", minute: "2-digit" });
+  }
+
+  function hostedSetup(control) {
+    hosted.control = control;
+    $("live-off").hidden = true;
+    $("live-hosted").hidden = false;
+    $("live-unlock").addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      LIVE.pass = $("live-pass").value;
+      $("live-unlock-msg").textContent = "Checking";
+      checkUnlock(true);
+    });
+    $("admin-form").addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      $("admin-start").disabled = true;
+      $("admin-msg").textContent = "Asking AWS to start the server";
+      fetch(hosted.control + "/start", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: $("admin-pass").value }) })
+        .then(function (r) { return r.json().then(function (j) { return { code: r.status, j: j }; }); })
+        .then(function (res) {
+          $("admin-start").disabled = false;
+          if (res.code === 202) $("admin-msg").textContent = "Starting. It takes about two minutes.";
+          else if (res.code === 200) $("admin-msg").textContent = "Already running.";
+          else $("admin-msg").textContent = res.j.error || "Could not start the server.";
+          if (res.code < 300) { $("admin-pass").value = ""; refreshStatus(); }
+        })
+        .catch(function (e) { $("admin-start").disabled = false; $("admin-msg").textContent = "Could not reach AWS: " + e.message; });
+    });
+    var saved = store("srcro-live-pass");
+    if (saved) LIVE.pass = saved;
+    refreshStatus();
+    hosted.timer = setInterval(function () { if (!document.hidden) refreshStatus(); }, 15000);
+  }
+
+  function refreshStatus() {
+    fetch(hosted.control + "/status", { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (s) {
+      hosted.server = s;
+      var line;
+      if (s.expired) line = "The live re-plan has ended for this expo. The recorded run above is still here.";
+      else if (s.state === "stopped") line = "The live server is off. Ask at the stand and the presenter will start it.";
+      else if (s.state === "pending") line = "The live server is starting, about two minutes.";
+      else if (s.state === "stopping") line = "The live server is turning off.";
+      else if (s.state === "running") line = "The live server is on until about " + sydneyTime(s.off_at) +
+        " Sydney time, one hour after the last re-plan.";
+      else line = "The live server is " + s.state + ".";
+      $("live-server").textContent = line;
+      if (s.state === "running" && LIVE.pass) checkUnlock(false);
+      if (s.state !== "running" && hosted.unlocked) { hosted.unlocked = false; $("live-form").hidden = true; $("live-unlock").hidden = false; }
+    }).catch(function () { $("live-server").textContent = "Could not reach the live server's status."; });
+  }
+
+  function checkUnlock(fromForm) {
+    liveFetch("/api/health").then(function (r) { return r.json().then(function (j) { return { code: r.status, j: j }; }); })
+      .then(function (res) {
+        if (res.code === 401) return relock(fromForm ? "That is not the demo password." : "");
+        if (res.code === 503) { $("live-unlock-msg").textContent = fromForm ? "Password noted. The server is off, it unlocks once it is on." : ""; store("srcro-live-pass", LIVE.pass); return; }
+        if (!res.j.live) { $("live-unlock-msg").textContent = "The server is still warming up its routing services."; store("srcro-live-pass", LIVE.pass); return; }
+        store("srcro-live-pass", LIVE.pass);
+        hosted.unlocked = true;
+        $("live-unlock-msg").textContent = "";
+        $("live-unlock").hidden = true;
+        $("live-form").hidden = false;
+      })
+      .catch(function () { $("live-unlock-msg").textContent = fromForm ? "The server is not reachable yet." : ""; });
+  }
+
+  function relock(msg) {
+    LIVE.pass = ""; store("srcro-live-pass", "");
+    hosted.unlocked = false;
+    $("live-form").hidden = true;
+    $("live-unlock").hidden = false;
+    $("live-unlock-msg").textContent = msg;
   }
 
   function poll(id) {
     var bar = $("live-progress");
     bar.hidden = false;
     var t = setInterval(function () {
-      fetch("/api/job/" + id, { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (j) {
+      liveFetch("/api/job/" + id).then(function (r) { return r.json(); }).then(function (j) {
+        if (!j.progress) return;   // a dropped or refused request, keep polling
         bar.value = j.progress.fraction;
         var d = j.progress.days_done;
         $("live-status").textContent = "Planning, distance-only day " + d.distance + " of " + j.progress.days_total +
@@ -302,11 +404,12 @@
         if (j.state === "done") {
           $("live-status").textContent = "Done in " + Math.round(j.elapsed_s) + " s. The maps now show the live run.";
           useData(j.result, true);
+          if (hosted.control) refreshStatus();
         } else {
           $("live-status").textContent = "The re-plan failed: " + (j.error || "unknown error");
         }
       }).catch(function () { /* keep polling through a dropped request */ });
-    }, 1000);
+    }, hosted.control ? 2000 : 1000);
   }
 
   // ---------------------------------------------------------------- start

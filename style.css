@@ -115,6 +115,14 @@ button:disabled { opacity: .55; cursor: not-allowed; }
   font: inherit; min-height: 44px; padding: 0 8px; border: 1px solid var(--rule); border-radius: 6px;
   background: var(--panel); color: var(--ink);
 }
+.live-server { margin: 0 0 10px; }
+.live-unlock, #admin-form { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin: 0 0 12px; }
+.live-unlock input, #admin-form input {
+  font: inherit; min-height: 44px; padding: 0 8px; border: 1px solid var(--rule); border-radius: 6px;
+  background: var(--panel); color: var(--ink); width: min(220px, 100%);
+}
+.admin { margin: 4px 0 12px; }
+.admin summary { cursor: pointer; color: var(--muted); min-height: 44px; display: flex; align-items: center; }
 .progress { margin-top: 10px; display: flex; gap: 12px; align-items: center; min-height: 24px; }
 .progress progress { width: 220px; height: 14px; }
 .foot { color: var(--muted); font-size: 14px; padding-bottom: 32px; }
