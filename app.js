@@ -497,7 +497,7 @@
     var pl = allPlans().filter(function (p) { return p.key === state.key; })[0];
     if (!pl) return null;
     if (pl.kind === "live") {
-      if (!pl.jobId) return null;
+      if (!pl.jobId || !liveFeature("solutions")) return null;
       return { url: LIVE.api + "/api/job/" + pl.jobId + "/solution/" + arm, gz: false, headers: liveHeaders(),
         name: "live-" + pl.jobId + "-" + state.fleet + "ev-" + arm };
     }
@@ -514,7 +514,7 @@
 
   function loadRaw() {
     var src = rawSource();
-    if (!src) return Promise.reject(new Error("no file for this scenario"));
+    if (!src) return Promise.reject(new Error("this live run's files are not offered by the live server yet"));
     if (raw.cache[src.url]) return Promise.resolve({ src: src, sol: raw.cache[src.url] });
     $("raw-status").textContent = "Loading " + src.name;
     return fetch(src.url, { headers: src.headers || {} }).then(function (r) {
@@ -764,6 +764,15 @@
     return fetch(LIVE.api + path, { method: opts.method || "GET", headers: liveHeaders(),
       body: opts.body, cache: "no-store" });
   }
+  // Whether the live server has a feature. The laptop's own server has all of them. The hosted
+  // stack lists what it has in live-config.js (written by scripts/cloud/live_replan/deploy.sh),
+  // so a page published before its stack is redeployed does not offer what would fail.
+  function liveFeature(name) {
+    if (!LIVE.api) return true;
+    var f = (window.SRCRO_LIVE || {}).features;
+    return !!f && f.indexOf(name) >= 0;
+  }
+  window.SRCRO_PAGE = { liveFetch: liveFetch, feature: liveFeature };   // for extras.js, the intake check
 
   // A random id the page keeps so the server can tell one phone from another behind a shared
   // network address. It is not a login and carries nothing about the visitor.

@@ -120,6 +120,37 @@
     </div>
   </section>
 
+  <section class="stats" id="stats" aria-labelledby="stats-h">
+    <h2 id="stats-h">Across the 90 scenarios</h2>
+    <p class="note">Descriptive statistics over the 90 pre-calculated scenarios, one row per fleet, computed in this page from the figures above. Change is emissions-aware against distance-only tier-1 CO2-e per request, paired by seed. The interval is a bootstrap 95 percent interval of the median change (2,000 resamples, fixed seed). The sign test is exact and two-sided. The pre-registered results on the poster use a Wilcoxon signed-rank test with Holm adjustment on their own seeds, so none of these figures replaces them.</p>
+    <div class="table-scroll">
+      <table id="stats-table" class="day-table">
+        <caption class="visually-hidden">Change in CO2-e per request across seeds, by number of electric trucks</caption>
+        <thead><tr><th scope="col">Electric trucks of four</th><th scope="col">Seeds compared</th><th scope="col">Median change</th><th scope="col">95% interval of the median</th><th scope="col">Seeds where emissions-aware is lower</th><th scope="col">Sign test p</th><th scope="col">Collected on the advised day, mean percent, distance-only and emissions-aware</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <h3>Diesel factor scenarios</h3>
+    <p class="note">The same 90 scenarios re-scored at another diesel factor. Tier-1 CO2-e is diesel kilometres times the factor, and electric trucks count 0 g per km. The plans were made at 1000 g per km and are not re-planned, so this is what the same routes would emit, not what a planner told another factor would choose. The factors are the project's driving scenarios: low 780 (ABS Survey of Motor Vehicle Use 2020, rigid trucks), central 1000 (an unsourced assumption), high 1140 (derived from NREL low-speed refuse-style cycle data) and stress 1300 (Argonne GREET, Class 8a refuse truck, includes stationary fuel).</p>
+    <fieldset class="rawarm"><legend>Diesel factor</legend>
+      <div class="seg" role="radiogroup">
+        <label><input type="radio" name="factor" value="low"> Low 780</label>
+        <label><input type="radio" name="factor" value="central" checked> Central 1000</label>
+        <label><input type="radio" name="factor" value="high"> High 1140</label>
+        <label><input type="radio" name="factor" value="stress"> Stress 1300</label>
+      </div>
+    </fieldset>
+    <p class="note">Showing <strong id="factor-now"></strong>, medians over the seeds.</p>
+    <div class="table-scroll">
+      <table id="factor-table" class="day-table">
+        <caption class="visually-hidden">Re-scored CO2-e per request by number of electric trucks</caption>
+        <thead><tr><th scope="col">Electric trucks of four</th><th scope="col">Distance-only, kg per request</th><th scope="col">Emissions-aware, kg per request</th><th scope="col">Median change</th><th scope="col">Seeds where emissions-aware is lower</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
   <section class="rawdata" id="rawdata" aria-labelledby="raw-h" hidden>
     <h2 id="raw-h">Planner input and output</h2>
     <p class="note">The files behind the maps above, for the scenario, electric trucks and plan chosen at the top. The output is the planner's <code>solution.json</code>, as described in the contract below. The input is what the planner was given, taken from the same file: the resolved settings, every request that arrived (with its location, volume and arrival day) and the intake outcomes for flagged and rejected requests. Coordinates in the requests are latitude then longitude.</p>
@@ -190,6 +221,40 @@
       </div>
     </form>
   </section>
+  <section class="intake" id="intake" aria-labelledby="intake-h" hidden>
+    <h2 id="intake-h">Intake check</h2>
+    <p class="note">Every request is checked once when it arrives, before it is routed. This sends one request to the planner's own intake code. Admitted requests join the plan. Flagged requests are real but need manual handling, so they are kept and reported, never silently dropped. Rejected records cannot be placed or served at all. Click the map to place a point, or use an example. Available while the live server is on.</p>
+    <div id="intake-map" class="intake-map" role="img" aria-label="Map of the council area to place a request on"></div>
+    <div class="live-grid">
+      <label for="intake-lat">Latitude</label><input id="intake-lat" type="text" inputmode="decimal" autocomplete="off">
+      <label for="intake-lon">Longitude</label><input id="intake-lon" type="text" inputmode="decimal" autocomplete="off">
+      <label for="intake-vol">Volume, m3</label><input id="intake-vol" type="text" inputmode="decimal" autocomplete="off">
+      <label class="inline"><input id="intake-noday" type="checkbox"> No arrival day</label>
+    </div>
+    <div class="raw-controls">
+      <button id="intake-go" type="button">Check request</button>
+      <button type="button" data-intake="inside">Example: inside</button>
+      <button type="button" data-intake="outside">Outside the council area</button>
+      <button type="button" data-intake="over">Over the volume cap</button>
+      <button type="button" data-intake="novolume">No volume</button>
+      <button type="button" data-intake="nocoords">No coordinates</button>
+      <button type="button" data-intake="noday">No arrival day</button>
+    </div>
+    <p id="intake-result" class="intake-result" aria-live="polite"></p>
+  </section>
+
+  <section class="poster" id="poster" aria-labelledby="poster-h">
+    <h2 id="poster-h">Pre-registered results from the poster</h2>
+    <p class="note">These are the tested results, and they are not figures from the runs on this page. Each was pre-registered, run over seeds fixed in advance and tested with a paired test, and each carries the caveat beside it. Electric trucks count as 0 g CO2-e per km (tank to wheel). The model covers collection routing only, on synthetic requests and a frozen road network. The 1000 g per km diesel factor is not sourced for this truck, so absolute kilograms are not predictions.</p>
+    <ul class="claims">
+      <li><strong>With one or two battery-electric trucks of four</strong>, emissions-aware planning cut tier-1 CO2-e per request by 0.735 kg (28.57 percent) and 0.837 kg (55.38 percent) against distance-only planning. Over 100 seeds the figures are -0.725 kg (28.35 percent) and -0.863 kg (55.78 percent). 30 seeds.</li>
+      <li><strong>Most of that saving, 55.1 to 73.7 percent,</strong> comes from giving the longest routes to the electric trucks. Emissions-aware routing adds a smaller, significant saving on top. A post hoc split, a ratio of means.</li>
+      <li><strong>If electric trucks charge at New South Wales grid factors (600 to 780 g per km)</strong>, the saving falls to 1.48 to 10.75 percent (0.052 to 0.313 kg) per request. Read beside the first line.</li>
+      <li><strong>With four diesel trucks there was no tier-1 saving.</strong> The gradient objective cost 0.66 to 0.92 percent (0.028 to 0.039 kg) more per request.</li>
+      <li><strong>At published refuse-truck diesel factors of 2,089 to 3,423 g per km</strong>, the saving stayed within 2 percentage points of its value at 1000 g per km.</li>
+    </ul>
+    <p class="note">The scenarios above are a separate set of 90 seeds, shown descriptively. They are not these results and do not replace them. No claim here says emissions are minimal.</p>
+  </section>
 </main>
 
 
@@ -207,5 +272,6 @@
      page keeps the "presenter's laptop" line. -->
 <script src="live-config.js"></script>
 <script src="app.js"></script>
+<script src="extras.js"></script>
 </body>
 </html>
