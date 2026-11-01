@@ -233,3 +233,10 @@ body.fs-open { overflow: hidden; }
 .seed-fig svg { width: 100%; max-width: 760px; height: auto; display: block; cursor: pointer; }
 .ch-dot { fill: #8B96A3; }
 .ch-dot-now { fill: var(--ink); stroke: var(--accent); stroke-width: 2; }
+.controls .basemap { margin: 0; }
+.controls .plan, .controls .replay, .controls fieldset { margin-bottom: 0; }
+/* Keeps the scenario, fleet, day and truck controls in view while the maps scroll. Only on
+   screens tall and wide enough that the bar leaves room for the maps. */
+@media (min-width: 900px) and (min-height: 640px) {
+  .controls { position: sticky; top: 0; z-index: 1100; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35); }
+}
