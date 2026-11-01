@@ -32,7 +32,7 @@
     </div>
     <div class="replay">
       <button id="anim-play" type="button">Animate day</button>
-      <label for="anim">Trucks <output id="anim-label" for="anim">end of day</output></label>
+      <label for="anim">Time of day <output id="anim-label" for="anim">end of day</output></label>
       <input id="anim" type="range" min="0" max="100" value="100" step="1">
     </div>
     <fieldset class="basemap">
@@ -44,7 +44,7 @@
       </div>
     </fieldset>
   </section>
-  <p class="note anim-note">Trucks follow the planned times. Drive times come from the routing engine's road speeds, each stop adds its planned service time, and between two stops a truck moves evenly along the road. A request fills in once its truck has finished there.</p>
+  <p class="note anim-note">Trucks follow the planned times. Drive times come from the routing engine's road speeds, each stop adds its planned service time, and between two stops a truck moves evenly along the road. A request fills in once its truck has finished there, and a truck grows as it fills, to full size at its 11 m3 body.</p>
   <p id="source-note" class="source-note" hidden></p>
 
   <section class="maps">

@@ -240,3 +240,4 @@ body.fs-open { overflow: hidden; }
 @media (min-width: 900px) and (min-height: 640px) {
   .controls { position: sticky; top: 0; z-index: 1100; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35); }
 }
+.truck span { transition: transform 0.2s linear; transform-origin: center; }

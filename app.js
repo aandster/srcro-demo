@@ -80,6 +80,7 @@
   // route take longer. Stop dwell time is not modelled. animT runs 0 to 1 over the longest
   // route of the day across both plans, and 1 is the finished day.
   var anim = { t: 1, raf: null, routes: [], t0: 18000, t1: 18000 };
+  var TRUCK_CAPACITY_M3 = 11;   // medium rigid rear-loader body, docs/FLEET.md
   var FALLBACK_KMH = 30;   // only for an export without planned times
 
   function hhmm(sec) {
@@ -131,8 +132,9 @@
     var truck = L.marker(r.path[0], { interactive: false, keyboard: false, zIndexOffset: 1000,
       icon: L.divIcon({ className: "truck", iconSize: [24, 24],
         html: '<span style="background:' + colour + '">' + r.vehicle + "</span>" }) }).addTo(g);
-    var stops = r.stops.map(function (st, j) { return { leave: anchors[2 * j + 2].t, marker: st.marker }; });
-    return { path: r.path, cum: cum, anchors: anchors, trail: trail, truck: truck, stops: stops, colour: colour };
+    var stops = r.stops.map(function (st, j) { return { leave: anchors[2 * j + 2].t, marker: st.marker, vol: st.vol || 0 }; });
+    return { path: r.path, cum: cum, anchors: anchors, trail: trail, truck: truck, stops: stops, colour: colour,
+      dot: truck.getElement() && truck.getElement().firstChild };
   }
 
   function distanceAt(ra, T) {
@@ -157,13 +159,17 @@
       }
       ra.trail.setLatLngs(pts);
       ra.truck.setLatLng(pos);
+      var load = 0;
       ra.stops.forEach(function (st) {
         var done = T >= st.leave;
+        if (done) load += st.vol;
         st.marker.setStyle({ fillColor: done ? ra.colour : "#FFFFFF", fillOpacity: done ? 1 : 0.35 });
       });
+      // The truck dot grows with what it has picked up, to full size at the 11 m3 body.
+      if (ra.dot) ra.dot.style.transform = "scale(" + (0.8 + 1.0 * Math.min(1, load / TRUCK_CAPACITY_M3)).toFixed(2) + ")";
     });
     $("anim").value = String(Math.round(anim.t * 100));
-    $("anim-label").textContent = anim.t >= 1 ? "end of day, last truck back at " + hhmm(anim.t1) : hhmm(T);
+    $("anim-label").textContent = hhmm(T);
   }
 
   function stopAnim() {
@@ -748,13 +754,21 @@
     return ARMS.every(function (a) { var e = $("map-" + a); return e.clientWidth > 0 && e.clientHeight > 0; });
   }
   makeMap("distance"); makeMap("emissions");
+  // The first fit can happen at a size the pane later leaves, so until the visitor pans or
+  // zooms a resize refits the view, after that their own view is kept.
+  var userMoved = false;
+  ARMS.forEach(function (a) {
+    ["pointerdown", "wheel", "keydown"].forEach(function (ev) {
+      maps[a].getContainer().addEventListener(ev, function () { userMoved = true; }, { passive: true });
+    });
+  });
   var wasSized = mapsSized();
   if (wasSized) fitAll();
   syncMaps();
   if (window.ResizeObserver) {
     var watcher = new ResizeObserver(function () {
       var now = mapsSized();
-      if (now && !wasSized) fitAll();
+      if (now && (!wasSized || !userMoved)) fitAll();
       wasSized = now;
     });
     ARMS.forEach(function (a) { watcher.observe($("map-" + a)); });
