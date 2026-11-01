@@ -19,7 +19,7 @@
   <section class="controls" aria-label="Controls">
     <div class="plan">
       <label for="plan">Pre-calculated scenario</label>
-      <select id="plan"><option>Loading the recorded run</option></select>
+      <select id="plan"><option>Loading scenarios</option></select>
     </div>
     <fieldset class="fleet">
       <legend>Electric trucks of four</legend>
@@ -120,13 +120,57 @@
     </div>
   </section>
 
+  <section class="rawdata" id="rawdata" aria-labelledby="raw-h" hidden>
+    <h2 id="raw-h">Planner input and output</h2>
+    <p class="note">The files behind the maps above, for the scenario, electric trucks and plan chosen at the top. The output is the planner's <code>solution.json</code>, as described in the contract below. The input is what the planner was given, taken from the same file: the resolved settings, every request that arrived (with its location, volume and arrival day) and the intake outcomes for flagged and rejected requests. Coordinates in the requests are latitude then longitude.</p>
+    <div class="raw-controls">
+      <fieldset class="rawarm"><legend>Plan</legend>
+        <div class="seg" role="radiogroup">
+          <label><input type="radio" name="rawarm" value="distance" checked> Distance-only</label>
+          <label><input type="radio" name="rawarm" value="emissions"> Emissions-aware</label>
+        </div>
+      </fieldset>
+      <button id="raw-view-in" type="button">View input</button>
+      <button id="raw-view-out" type="button">View output</button>
+      <button id="raw-dl-in" type="button">Download input</button>
+      <button id="raw-dl-out" type="button">Download output (solution.json)</button>
+      <a id="raw-gz" class="rawlink" href="#" hidden>Download compressed original</a>
+    </div>
+    <p id="raw-status" class="note" aria-live="polite"></p>
+    <div id="raw-summary" class="diff"></div>
+    <div class="table-scroll" id="raw-table-wrap" hidden>
+      <table id="raw-table" class="day-table">
+        <caption id="raw-table-cap" class="visually-hidden">Requests</caption>
+        <thead></thead><tbody></tbody>
+      </table>
+    </div>
+    <pre id="raw-view" class="raw-view" tabindex="0" hidden></pre>
+    <h3>The contract</h3>
+    <p class="note">The output follows <a href="contract/SOLUTION_CONTRACT.md">the solution.json contract</a> (version 1), which a run checks itself against with <a href="contract/solution_v1.json">this JSON Schema</a> before it counts as finished. Every submitted request appears in it with exactly one outcome: collected, outstanding, flagged or rejected at intake. These runs are descriptive, not pre-registered results.</p>
+    <table class="day-table contract-table">
+      <caption class="visually-hidden">Top level keys of solution.json</caption>
+      <thead><tr><th scope="col">Key</th><th scope="col">What it holds</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">config</th><td>the resolved run settings</td></tr>
+        <tr><th scope="row">manifest</th><td>commit, settings hash, software versions, seed</td></tr>
+        <tr><th scope="row">arrivals</th><td>every request that arrived</td></tr>
+        <tr><th scope="row">flagged, rejected</th><td>intake outcomes with a reason code</td></tr>
+        <tr><th scope="row">daily</th><td>one entry per simulated day</td></tr>
+        <tr><th scope="row">collected</th><td>every request collected, with its day and wait</td></tr>
+        <tr><th scope="row">day_routes</th><td>the routes each truck drives, by day</td></tr>
+        <tr><th scope="row">kpis</th><td>headline figures for the measured days</td></tr>
+      </tbody>
+    </table>
+  </section>
+
   <section class="live" id="live" aria-labelledby="live-h" hidden>
     <h2 id="live-h">Live re-plan</h2>
     <div id="live-hosted" class="live-hosted" hidden>
       <p id="live-server" class="live-server" aria-live="polite">Checking the live server</p>
+      <p id="live-queue" class="live-queue" aria-live="polite"></p>
     </div>
     <form id="live-form" hidden>
-      <p>Run the real planner now on a new short scenario, both plans at once. It takes about a minute.</p>
+      <p id="live-intro">Run the real planner now on a new short scenario, both plans at once. A 5 day run takes under half a minute once it starts. Runs queue first in, first out, one at a time.</p>
       <div class="live-grid">
         <label for="live-seed">Scenario number</label>
         <input id="live-seed" type="number" min="1" max="2147483647" step="1" value="7" inputmode="numeric">
@@ -135,9 +179,11 @@
         <select id="live-fleet"><option>0</option><option selected>1</option><option>2</option><option>3</option><option>4</option></select>
         <label for="live-arrivals">Requests a day (10 to 40)</label>
         <input id="live-arrivals" type="number" min="10" max="40" step="1" value="25" inputmode="numeric">
+        <label for="live-days">Measured days</label>
+        <select id="live-days"><option value="5" selected>5 days (1 queue slot)</option><option value="10">10 days (2 slots)</option><option value="20">20 days (3 slots)</option></select>
       </div>
       <button id="live-go" type="submit">Re-plan now</button>
-      <button id="live-back" type="button" hidden>Back to the recorded run</button>
+      <button id="live-back" type="button" hidden>Back to the pre-calculated scenarios</button>
       <div class="progress" aria-live="polite">
         <progress id="live-progress" max="1" value="0" hidden></progress>
         <span id="live-status"></span>
@@ -155,7 +201,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"
         integrity="sha512-puJW3E/qXDqYp9IfhAI54BJEaWIfloJ7JWs7OeD5i6ruC9JZL1gERT1wjtwXFlh7CjE7ZJ+/vcRZRkIYIb6p4g==" crossorigin="anonymous"></script>
 <script>if (!window.L) document.write('<script src="vendor/leaflet.js"><\/script>');</script>
-<script src="data.js"></script>
+<script src="layers.js"></script>
 <script src="seeds/seeds.js"></script>
 <!-- Addresses of the web live re-plan (scripts/cloud/live_replan/). Absent or empty, the hosted
      page keeps the "presenter's laptop" line. -->

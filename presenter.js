@@ -3,6 +3,21 @@
 (function () {
   "use strict";
   function $(id) { return document.getElementById(id); }
+  // QR code of the public page, drawn here from vendor/qrcode.js (Kazuhiko Arase, MIT) so it works offline.
+  var PAGE = "https://srcro.aandster.me/";
+  if (window.qrcode) {
+    var qr = window.qrcode(0, "M");
+    qr.addData(PAGE); qr.make();
+    // Four module quiet zone, white ground, so a phone camera reads it on the dark page.
+    $("qr").innerHTML = qr.createSvgTag({ cellSize: 8, margin: 32, scalable: true });
+  } else {
+    $("qr").textContent = PAGE;
+  }
+  $("qr-full").addEventListener("click", function () {
+    var el = $("qr").parentNode;
+    if (el.requestFullscreen) el.requestFullscreen().catch(function () { el.classList.toggle("qr-expanded"); });
+    else el.classList.toggle("qr-expanded");
+  });
   var cfg = window.SRCRO_LIVE;
   if (!cfg || !cfg.control) {
     $("live-server").textContent = "No hosted live server is configured in live-config.js.";

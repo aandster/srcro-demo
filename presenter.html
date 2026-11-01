@@ -15,6 +15,14 @@
 </header>
 
 <main>
+  <section class="live qr-section" aria-labelledby="qr-h">
+    <h2 id="qr-h">Scan to try it on your phone</h2>
+    <div id="qr" class="qr" role="img" aria-label="QR code for https://srcro.aandster.me/"></div>
+    <p class="qr-url" id="qr-url">https://srcro.aandster.me/</p>
+    <p class="note">Visitors can run the live re-plan from their own phones. Runs queue first in, first out, one at a time. Press F11 or the full screen button to show this big.</p>
+    <button id="qr-full" type="button">Full screen QR code</button>
+  </section>
+
   <section class="live" aria-labelledby="server-h">
     <h2 id="server-h">Live server</h2>
     <p id="live-server" class="live-server" aria-live="polite">Checking the live server</p>
@@ -31,6 +39,7 @@
   </section>
 </main>
 
+<script src="vendor/qrcode.js"></script>
 <script src="live-config.js"></script>
 <script src="presenter.js"></script>
 </body>

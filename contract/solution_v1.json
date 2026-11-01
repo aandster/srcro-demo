@@ -1,0 +1,576 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://srcro.local/schemas/solution_v1.json",
+  "title": "SR:CRO solution.json (schema v1)",
+  "description": "Integration contract for solution.json, written by src/srcro/run.py. FR-13 / UT-19. See docs/SOLUTION_CONTRACT.md for field-by-field prose.",
+  "type": "object",
+  "$defs": {
+    "flagged_request": {
+      "description": "FR-04: a lodged request flagged for manual handling instead of routed. day is its arrival_day.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "day", "reason"],
+      "properties": {
+        "id": { "type": "integer" },
+        "day": { "type": "integer", "minimum": 0 },
+        "reason": { "enum": ["OUTSIDE_LGA", "VOLUME_OVER_CAP"] }
+      }
+    }
+  },
+  "required": ["tag", "config", "kpis", "daily", "collected", "depot", "arrivals", "day_routes"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "description": "Contract version. Written by current run.py as 1. Absent on files archived before this schema existed -- optional so those still validate.",
+      "type": "integer",
+      "const": 1
+    },
+    "tag": {
+      "description": "Run identifier: <config name>_<git short sha>_<config sha8>[_seed<N>].",
+      "type": "string",
+      "minLength": 1
+    },
+    "manifest": {
+      "description": "Reproducibility metadata (FR-12 / ST-05). Absent on evidence archived before the manifest existed, and on evidence archived before this task's manifest extension -- so only the five original keys are required; the newer keys are optional so both eras validate.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit", "config_hash", "deps_lock_hash", "osrm_image", "vroom_image"],
+      "properties": {
+        "commit": { "type": "string" },
+        "config_hash": { "type": "string" },
+        "deps_lock_hash": { "type": ["string", "null"] },
+        "osrm_image": { "type": ["string", "null"] },
+        "vroom_image": { "type": ["string", "null"] },
+        "seed_used": {
+          "description": "The seed actually used for this run, after any CLI --seed override.",
+          "type": "integer"
+        },
+        "python_version": {
+          "description": "Interpreter version that ran the pipeline (platform.python_version()).",
+          "type": "string"
+        },
+        "dependencies": {
+          "description": "requirements.lock parsed into {package_name: pinned_version}.",
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "osrm_extract": {
+          "description": "Hash of the OSRM extract file actually built from, so a result can be tied to the exact road network. sha256 is the literal string \"missing\" when no extract file is present, rather than failing the run.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "sha256"],
+          "properties": {
+            "path": { "type": "string" },
+            "sha256": { "type": "string" }
+          }
+        },
+        "config_path": {
+          "description": "Path to the config file passed on the command line.",
+          "type": "string"
+        },
+        "cmem_gradient": {
+          "description": "Present only on an emissions-objective run with emissions.model cmem_gradient (backlog B18, task 034, NFR-02). Its arc costs depend on two files outside the config hash and on the OSRM data, so their sha256 are recorded. osrm_probe_sha256 is the sha256 of one fixed /route response (src/srcro/gradient_cost.py, PROBE_POINTS).",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["cmem_config_sha256", "elevation_table_sha256", "osrm_probe_sha256"],
+          "properties": {
+            "cmem_config_sha256": { "type": "string" },
+            "elevation_table_sha256": { "type": "string" },
+            "osrm_probe_sha256": { "type": "string" }
+          }
+        },
+        "alns_stage": {
+          "description": "Present only when the load-aware routing stage 2 is on (config alns_stage, task 044, backlog B19, NFR-02). The ALNS settings file is outside the config hash, so its path and sha256 are recorded with the stage 2 objective (fuel on the emissions arm, distance on the distance arm) and the alns package version.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["settings_path", "settings_sha256", "objective", "alns_version"],
+          "properties": {
+            "settings_path": { "type": "string" },
+            "settings_sha256": { "type": "string" },
+            "objective": { "enum": ["fuel", "distance"] },
+            "alns_version": { "type": "string" }
+          }
+        }
+      }
+    },
+    "config": {
+      "description": "The resolved run config (YAML loaded to a dict), echoed verbatim. Not re-validated in detail here -- run.py's own _validate_schema/_validate_config_values already gate it before a run starts.",
+      "type": "object",
+      "required": ["name", "seed", "horizon", "demand", "service", "fleet", "solver", "simulation"]
+    },
+    "kpis": {
+      "description": "Headline KPIs from src/srcro/kpi.py::extract. One key, pct_within_<N>_bdays, is named after the config's service.report_target, so it is matched by pattern rather than by a fixed name.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requests_served", "mean_age_bdays", "median_age_bdays", "p90_age_bdays",
+        "max_age_bdays", "steady_state_backlog", "backlog_trend_per_day",
+        "expected_wait_observed_bdays", "expected_wait_queueing_bdays",
+        "distance_km_per_request", "total_distance_km", "objective_cost_per_request",
+        "vehicle_days_used", "vehicle_days_available", "fleet_utilisation_pct",
+        "mean_solver_ms"
+      ],
+      "patternProperties": {
+        "^pct_within_[0-9]+_bdays$": { "type": "number" }
+      },
+      "properties": {
+        "requests_served": { "type": "integer", "minimum": 0 },
+        "mean_age_bdays": { "type": "number" },
+        "median_age_bdays": { "type": "number" },
+        "p90_age_bdays": { "type": "number" },
+        "max_age_bdays": { "type": "number" },
+        "steady_state_backlog": { "type": "integer", "minimum": 0 },
+        "backlog_trend_per_day": { "type": "number" },
+        "expected_wait_observed_bdays": { "type": "number" },
+        "expected_wait_queueing_bdays": { "type": ["number", "null"] },
+        "distance_km_per_request": { "type": "number", "minimum": 0 },
+        "total_distance_km": { "type": "number", "minimum": 0 },
+        "objective_cost_per_request": { "type": "number" },
+        "vehicle_days_used": { "type": "integer", "minimum": 0 },
+        "vehicle_days_available": { "type": "integer", "minimum": 0 },
+        "fleet_utilisation_pct": { "type": "number" },
+        "mean_solver_ms": { "type": "number", "minimum": 0 },
+        "distance_km_by_type": {
+          "description": "Measured-emissions KPI: measured-window routed distance per fleet vehicle type, km. Only types that drove appear. Optional so evidence archived before this KPI still validates.",
+          "type": "object",
+          "additionalProperties": { "type": "number", "minimum": 0 }
+        },
+        "emissions_g_co2e_per_km": {
+          "description": "Measured-emissions KPI: total_emissions over total_distance_km, g CO2e/km. Objective-independent (distance x emissions.factors_g_per_km). 0 when no distance was driven. Optional so older evidence still validates.",
+          "type": "number",
+          "minimum": 0
+        },
+        "emissions_kg_co2e_per_request": {
+          "description": "Measured-emissions KPI: total_emissions_kg_co2e over requests_served. 0 when none were served. Optional so older evidence still validates.",
+          "type": "number",
+          "minimum": 0
+        },
+        "total_emissions_kg_co2e": {
+          "description": "Measured-emissions KPI: measured-window CO2e, kg, from routed distance per vehicle type times emissions.factors_g_per_km, regardless of solver.objective. Optional so older evidence still validates.",
+          "type": "number",
+          "minimum": 0
+        },
+        "flagged": {
+          "description": "FR-04: requests flagged for manual handling over the whole horizon (warmup included). Optional so evidence archived before FR-04 still validates.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "late_count": {
+          "description": "FR-06 / ST-02: measured collected requests that were reported late (expected day after arrival_day + report_target) at least once. Optional so evidence archived before FR-06 still validates.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "late_within_1_bday_pct": {
+          "description": "FR-06 / ST-02: percentage of late_count collected on their original advised day (collected[].advised_day) or at most one business day after it. This is the ST-02 test measure worded by the Testing and Evaluation Plan (within one business day of expected date), not the on-time definition, which is advised_on_time_pct. Collection before the advised day is a miss (rule of 2026-09-30). Evidence archived before that date used the first late expected day with one business day either side. Null (not applicable) when late_count is 0 (backlog B31, task 026). Files written before task 026 hold 0.0 in that case, which means not applicable whenever late_count is 0.",
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 100
+        },
+        "advised_on_time_pct": {
+          "description": "FR-06: percentage of all measured collected requests, late or not, collected on their original advised day itself. There is no grace day (Jordan, 2026-09-30, task 023). Runs written before task 023 counted one business day after the advised day as on time, and scripts/recompute_advised_kpis.py re-scores them from their collected records. 0.0 when no collected record has advised_day. Optional so evidence archived before 2026-09-30 still validates.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "early_count": {
+          "description": "FR-06: measured collected requests, late or not, collected before their original advised day. Each is a service failure, since the customer only puts items out the day before the advised day. 0 by construction since task 022 (backlog B27), because the advised day is the lower bound of the request's time window. Optional so evidence archived before 2026-09-30 still validates.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "trips_used": {
+          "description": "Backlog B28 (task 029): trips run over the measured window when config.horizon.max_trips_per_day is above 1. Each route in day_routes is one trip. vehicle_days_used counts trucks per day in those runs. Absent in single-trip runs.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "trips_per_vehicle_day": {
+          "description": "Backlog B28 (task 029): trips_used over vehicle_days_used, 0 when no truck ran. Absent in single-trip runs.",
+          "type": "number",
+          "minimum": 0
+        },
+        "energy_routes": {
+          "description": "Battery-electric energy sweep (Jordan, 2026-10-04): executed routes of the vehicle types in config.energy.vehicle_types over the measured window. Present only when the run has an energy block.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "energy_routes_over_usable": {
+          "description": "Of energy_routes, those whose routed metres pass the range allowed by usable energy over energy_kwh_per_km (src/srcro/energy.py range_m). Under mode constrained it is 0 by construction and is kept as an independent check.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "energy_kwh_total": {
+          "description": "Route km times energy_kwh_per_km, summed over energy_routes, kWh.",
+          "type": "number",
+          "minimum": 0
+        },
+        "energy_kwh_per_route_mean": {
+          "description": "energy_kwh_total over energy_routes, kWh, 0 when there are none.",
+          "type": "number",
+          "minimum": 0
+        },
+        "energy_kwh_per_route_max": {
+          "description": "Largest route energy over energy_routes, kWh, 0 when there are none.",
+          "type": "number",
+          "minimum": 0
+        },
+        "energy_route_km_max": {
+          "description": "Longest route over energy_routes, km, 0 when there are none.",
+          "type": "number",
+          "minimum": 0
+        },
+        "energy_body_kwh_total": {
+          "description": "Energy sweep 2: the per-stop body part of energy_kwh_total, stops x body_kwh_per_stop, kWh. 0 when the energy block has no body term. Absent in runs before energy sweep 2.",
+          "type": "number",
+          "minimum": 0
+        },
+        "unassigned_job_days": {
+          "description": "Energy sweep: jobs VROOM left unassigned in the plan of each measured day, summed over those days.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "deferred_job_days": {
+          "description": "Energy sweep: jobs planned for a later day than the plan's own day, summed over measured days.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "oldest_outstanding_age_bdays": {
+          "description": "Energy sweep: the oldest uncollected request at the end of any measured day, business days. max_age_bdays is the oldest collected one.",
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "daily": {
+      "description": "Per-day diagnostics for every simulated day (warmup and measured).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "day", "backlog_end", "collected", "distance_m", "cost", "vehicles_used",
+          "solver_ms", "measured", "arrivals", "collected_free", "collected_ramp",
+          "collected_escalated", "collected_ages", "backlog_ages", "planned_later",
+          "unassigned", "suppressed_routes"
+        ],
+        "properties": {
+          "day": { "type": "integer", "minimum": 0 },
+          "backlog_end": { "type": "integer", "minimum": 0 },
+          "collected": { "type": "integer", "minimum": 0 },
+          "distance_m": { "type": "integer", "minimum": 0 },
+          "cost": { "type": "integer", "minimum": 0 },
+          "vehicles_used": { "type": "integer", "minimum": 0 },
+          "solver_ms": { "type": "integer", "minimum": 0 },
+          "measured": { "type": "boolean" },
+          "arrivals": { "type": "integer", "minimum": 0 },
+          "collected_free": { "type": "integer", "minimum": 0 },
+          "collected_ramp": { "type": "integer", "minimum": 0 },
+          "collected_escalated": { "type": "integer", "minimum": 0 },
+          "collected_ages": { "type": "array", "items": { "type": "integer" } },
+          "backlog_ages": { "type": "array", "items": { "type": "integer" } },
+          "planned_later": { "type": "integer", "minimum": 0 },
+          "unassigned": { "type": "integer", "minimum": 0 },
+          "suppressed_routes": { "type": "integer", "minimum": 0 },
+          "trips": {
+            "description": "Backlog B28 (task 029): routes run this day when config.horizon.max_trips_per_day is above 1. Each route is one trip, and vehicles_used counts the distinct trucks that ran them. Absent in single-trip runs.",
+            "type": "integer",
+            "minimum": 0
+          },
+          "hybrid": {
+            "description": "Task 058 (backlog B77, exploratory): present only when config.solver.method is vroom_ortools. Which plan of the re-plan was executed (vroom, or ortools when OR-Tools started from VROOM's plan found a strictly better one), whether OR-Tools accepted VROOM's plan as its start, each plan's indicators (minus assigned priority, minus assigned jobs, route cost, lower is better, null when the start was rejected) and each stage's milliseconds.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["winner", "warm_start", "vroom_key", "ortools_key", "vroom_ms", "ortools_ms"],
+            "properties": {
+              "winner": { "enum": ["vroom", "ortools"] },
+              "warm_start": { "enum": ["accepted", "rejected"] },
+              "vroom_key": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
+              "ortools_key": { "type": ["array", "null"], "items": { "type": "number" } },
+              "vroom_ms": { "type": "integer", "minimum": 0 },
+              "ortools_ms": { "type": "integer", "minimum": 0 }
+            }
+          },
+          "day_swap": {
+            "description": "Task 045 Design B (backlog B70): present only when config.day_swap is on. The load-aware day swap of the requests lodged this day, after today's routes ran and before their advised day was read from the plan. candidates are the new requests on a later-day route, evaluated the target days priced, moved the requests given another day, gain the summed fall of route plus deferral cost in the arm's own units (g CO2-e or m), and moves each move with its request id and planned days from and to. best_gains holds, in candidate id order, each candidate's best move in the first pass whether it paid or not (null when no other day was feasible).",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["candidates", "evaluated", "moved", "gain", "moves", "best_gains"],
+            "properties": {
+              "best_gains": { "type": "array", "items": { "type": ["number", "null"] } },
+              "candidates": { "type": "integer", "minimum": 0 },
+              "evaluated": { "type": "integer", "minimum": 0 },
+              "moved": { "type": "integer", "minimum": 0 },
+              "gain": { "type": "number" },
+              "moves": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["id", "from", "to", "gain"],
+                  "properties": {
+                    "id": { "type": "integer" },
+                    "from": { "type": "integer", "minimum": 0 },
+                    "to": { "type": "integer", "minimum": 0 },
+                    "gain": { "type": "number" }
+                  }
+                }
+              }
+            }
+          },
+          "feasibility": {
+            "description": "Independent feasibility checker result for this day's executed day-one plan (FR-07 / ST-03). Any violation stops the run before solution.json is written, so violations is always 0 in a written file. Optional so evidence archived before this block existed still validates.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["routes_checked", "violations"],
+            "properties": {
+              "routes_checked": { "type": "integer", "minimum": 0 },
+              "violations": { "type": "integer", "minimum": 0, "maximum": 0 }
+            }
+          },
+          "flagged": {
+            "description": "FR-04: requests lodged on this day and flagged for manual handling instead of routed. The per-day view of the top-level flagged list, which is its concatenation over days. Optional so evidence archived before FR-04 still validates.",
+            "type": "array",
+            "items": { "$ref": "#/$defs/flagged_request" }
+          },
+          "expected": {
+            "description": "FR-06: after this day's re-plan, every outstanding request planned after its cap day or left unassigned, with its expected collection day. expected_date is present only when horizon.calendar_start is set. Optional so evidence archived before FR-06 still validates.",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "cap_day", "expected_day"],
+              "properties": {
+                "id": { "type": "integer" },
+                "cap_day": { "type": "integer", "minimum": 0 },
+                "expected_day": { "type": "integer", "minimum": 0 },
+                "expected_date": { "type": "string", "format": "date" }
+              }
+            }
+          },
+          "dist_m_by_type": {
+            "description": "Executed day-one routed distance per fleet vehicle type, metres. Feeds the measured-emissions KPIs. Empty object on days with no backlog. Optional so evidence archived before it existed still validates.",
+            "type": "object",
+            "additionalProperties": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "collected": {
+      "description": "One entry per collected request, across all simulated days (the 'measured' flag itself is stripped before writing).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "arrival_day", "lat", "lon", "volume_m3", "service", "slat", "slon", "collected_day", "age_bdays"],
+        "properties": {
+          "id": { "type": "integer" },
+          "arrival_day": { "type": "integer", "minimum": 0 },
+          "lat": { "type": "number" },
+          "lon": { "type": "number" },
+          "volume_m3": { "type": "number", "minimum": 0 },
+          "service": { "type": "integer", "minimum": 0, "description": "Service time at this stop, seconds." },
+          "slat": { "type": "number", "description": "OSRM-snapped latitude." },
+          "slon": { "type": "number", "description": "OSRM-snapped longitude." },
+          "collected_day": { "type": "integer", "minimum": 0 },
+          "age_bdays": { "type": "integer", "minimum": 0 },
+          "late_expected_day": {
+            "description": "FR-06 / ST-02: first late expected day reported for this request. Absent if it was never reported late. Its presence is what counts a request in late_count.",
+            "type": "integer",
+            "minimum": 0
+          },
+          "late_expected_date": {
+            "description": "Calendar date of late_expected_day. Present only when horizon.calendar_start is set.",
+            "type": "string",
+            "format": "date"
+          },
+          "advised_day": {
+            "description": "FR-06 / ST-02: original advised day, the expected collection day from the first re-plan after lodgement (the re-plan on arrival_day), whether or not the request was late then. Collection is judged against it (rule of 2026-09-30), and since task 022 the request is never collected before it. Optional so evidence archived before that date still validates.",
+            "type": "integer",
+            "minimum": 0
+          },
+          "advised_date": {
+            "description": "Calendar date of advised_day. Present only when horizon.calendar_start is set.",
+            "type": "string",
+            "format": "date"
+          }
+        }
+      }
+    },
+    "depot": {
+      "description": "Depot location as [lat, lon].",
+      "type": "array",
+      "prefixItems": [{ "type": "number" }, { "type": "number" }],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "arrivals": {
+      "description": "Every request that arrived during the simulated horizon, regardless of whether it was collected.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "lat", "lon", "arrival_day", "volume_m3"],
+        "properties": {
+          "id": { "type": "integer" },
+          "lat": { "type": "number" },
+          "lon": { "type": "number" },
+          "arrival_day": { "type": "integer", "minimum": 0 },
+          "volume_m3": { "type": "number", "minimum": 0 }
+        }
+      }
+    },
+    "flagged": {
+      "description": "FR-04, backlog B12 (task 025): every request flagged for manual handling over the whole horizon (warmup included), in intake order. The same entries as daily[].flagged concatenated over days. Flagged requests are lodged, so they are also in arrivals, and never in collected, day_routes or any backlog_ids. Optional so evidence archived before task 025 still validates.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/flagged_request" }
+    },
+    "rejected": {
+      "description": "FR-04, backlog B12 (task 025): every submitted record rejected at intake, in intake order. A rejected record is not lodged, so it is in no other list of this file. day is the business-day index the record was submitted on (its arrival_day), null when the record had no timestamp. Optional so evidence archived before task 025 still validates.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "day", "reason"],
+        "properties": {
+          "id": { "type": "integer" },
+          "day": { "type": ["integer", "null"], "minimum": 0 },
+          "reason": { "enum": ["MISSING_COORDINATES", "MISSING_TIMESTAMP", "VOLUME_NON_POSITIVE"] }
+        },
+        "allOf": [
+          {
+            "description": "MISSING_TIMESTAMP means there was no day to record.",
+            "if": { "properties": { "reason": { "const": "MISSING_TIMESTAMP" } } },
+            "then": { "properties": { "day": { "type": "null" } } }
+          },
+          {
+            "description": "Coordinates and timestamp are checked before volume (ingest.validate_request), so a VOLUME_NON_POSITIVE record always has a day.",
+            "if": { "properties": { "reason": { "const": "VOLUME_NON_POSITIVE" } } },
+            "then": { "properties": { "day": { "type": "integer" } } }
+          }
+        ]
+      }
+    },
+    "day_routes": {
+      "description": "Per-day route plans, keyed by day index (string) as actually executed. See docs/SOLUTION_CONTRACT.md for the route/step field meanings, including that step location is [lon, lat], the reverse of depot/points/arrivals.",
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[0-9]+$": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["routes", "points", "backlog_ids", "collected_ids"],
+          "properties": {
+            "routes": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["fleet_id", "route"],
+                "properties": {
+                  "fleet_id": { "type": "integer" },
+                  "trip": {
+                    "description": "Backlog B28 (task 029): trip number of this route for its truck on this day, from 1, when config.horizon.max_trips_per_day is above 1. Every trip starts and ends at the depot. Absent in single-trip runs, where each truck has at most one route a day.",
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "route": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "vehicle", "cost", "delivery", "amount", "pickup", "setup",
+                      "service", "duration", "waiting_time", "priority", "distance",
+                      "steps", "violations"
+                    ],
+                    "properties": {
+                      "vehicle": { "type": "integer" },
+                      "cost": { "type": "integer", "minimum": 0, "description": "VROOM objective cost, not a physical unit." },
+                      "delivery": { "type": "array", "items": { "type": "integer" }, "minItems": 1 },
+                      "amount": { "type": "array", "items": { "type": "integer" }, "minItems": 1 },
+                      "pickup": { "type": "array", "items": { "type": "integer" }, "minItems": 1 },
+                      "setup": { "type": "integer", "minimum": 0, "description": "Seconds." },
+                      "service": { "type": "integer", "minimum": 0, "description": "Total service time on this route, seconds." },
+                      "duration": { "type": "integer", "minimum": 0, "description": "Total route duration, seconds." },
+                      "waiting_time": { "type": "integer", "minimum": 0, "description": "Seconds." },
+                      "priority": { "type": "integer" },
+                      "distance": { "type": "integer", "minimum": 0, "description": "Total route distance, metres." },
+                      "violations": { "type": "array" },
+                      "steps": {
+                        "type": "array",
+                        "items": {
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": ["type", "location", "location_index", "setup", "service", "waiting_time", "load", "arrival", "duration", "violations", "distance"],
+                              "properties": {
+                                "type": { "const": "start" },
+                                "location": { "type": "array", "prefixItems": [{ "type": "number" }, { "type": "number" }], "items": false, "minItems": 2, "maxItems": 2 },
+                                "location_index": { "type": "integer", "minimum": 0 },
+                                "setup": { "type": "integer", "minimum": 0 },
+                                "service": { "type": "integer", "minimum": 0 },
+                                "waiting_time": { "type": "integer", "minimum": 0 },
+                                "load": { "type": "array", "items": { "type": "integer" }, "minItems": 1 },
+                                "arrival": { "type": "integer", "minimum": 0, "description": "Seconds since midnight." },
+                                "duration": { "type": "integer", "minimum": 0, "description": "Cumulative route duration at this step, seconds." },
+                                "violations": { "type": "array" },
+                                "distance": { "type": "integer", "minimum": 0, "description": "Cumulative route distance at this step, metres." }
+                              }
+                            },
+                            {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": ["type", "location", "location_index", "id", "job", "setup", "service", "waiting_time", "load", "arrival", "duration", "violations", "distance"],
+                              "properties": {
+                                "type": { "const": "job" },
+                                "location": { "type": "array", "prefixItems": [{ "type": "number" }, { "type": "number" }], "items": false, "minItems": 2, "maxItems": 2 },
+                                "location_index": { "type": "integer", "minimum": 0 },
+                                "id": { "type": "integer", "description": "Collected request id, same as job." },
+                                "job": { "type": "integer" },
+                                "setup": { "type": "integer", "minimum": 0 },
+                                "service": { "type": "integer", "minimum": 0 },
+                                "waiting_time": { "type": "integer", "minimum": 0 },
+                                "load": { "type": "array", "items": { "type": "integer" }, "minItems": 1 },
+                                "arrival": { "type": "integer", "minimum": 0 },
+                                "duration": { "type": "integer", "minimum": 0 },
+                                "violations": { "type": "array" },
+                                "distance": { "type": "integer", "minimum": 0 }
+                              }
+                            },
+                            {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": ["type", "location", "location_index", "setup", "service", "waiting_time", "load", "arrival", "duration", "violations", "distance"],
+                              "properties": {
+                                "type": { "const": "end" },
+                                "location": { "type": "array", "prefixItems": [{ "type": "number" }, { "type": "number" }], "items": false, "minItems": 2, "maxItems": 2 },
+                                "location_index": { "type": "integer", "minimum": 0 },
+                                "setup": { "type": "integer", "minimum": 0 },
+                                "service": { "type": "integer", "minimum": 0 },
+                                "waiting_time": { "type": "integer", "minimum": 0 },
+                                "load": { "type": "array", "items": { "type": "integer" }, "minItems": 1 },
+                                "arrival": { "type": "integer", "minimum": 0 },
+                                "duration": { "type": "integer", "minimum": 0 },
+                                "violations": { "type": "array" },
+                                "distance": { "type": "integer", "minimum": 0 }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "points": {
+              "description": "[lat, lon] pairs for every stop considered on this day (depot plus jobs), same order convention as depot/arrivals.",
+              "type": "array",
+              "items": { "type": "array", "prefixItems": [{ "type": "number" }, { "type": "number" }], "items": false, "minItems": 2, "maxItems": 2 }
+            },
+            "backlog_ids": { "type": "array", "items": { "type": "integer" } },
+            "collected_ids": { "type": "array", "items": { "type": "integer" } }
+          }
+        }
+      }
+    }
+  }
+}

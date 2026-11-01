@@ -1,6 +1,7 @@
-// Expo demo (task 063). Plain JavaScript and Leaflet 1.9.4, data from data.js
-// (window.SRCRO_DEMO, written by scripts/export_demo_data.py). Presentation only, every
-// number on the page is from one illustrative run and the page says so.
+// Expo demo (task 063). Plain JavaScript and Leaflet 1.9.4. The shared map layers are in
+// layers.js (window.SRCRO_LAYERS), each scenario in seeds/seed-<n>.js, both written by
+// scripts/export_demo_data.py. Presentation only, every number on the page is descriptive
+// and the page says so.
 (function () {
   "use strict";
 
@@ -8,8 +9,10 @@
   var ARMS = ["distance", "emissions"];
   var PLAY_MS = 1400;
 
-  var recorded = window.SRCRO_DEMO;
-  var state = { data: recorded, fleet: null, day: 0, timer: null, live: false, key: "seed:" + recorded.meta.seed };
+  var LAYERS = window.SRCRO_LAYERS;
+  var seedIndex = window.SRCRO_SEED_INDEX || [];
+  var DEFAULT_SEED = seedIndex.length ? seedIndex[0].seed : 1;
+  var state = { data: null, fleet: null, day: 0, timer: null, live: false, key: "seed:" + DEFAULT_SEED };
   var maps = {}, layers = {}, syncing = false, streetLayers = {};
 
   function $(id) { return document.getElementById(id); }
@@ -17,14 +20,14 @@
   function days(n, word) { return n + " " + word + (n === 1 ? " day" : " days"); }
   function signed(v, dp) { return (v > 0 ? "+" : "") + fmt(v, dp); }
 
-  if (!window.L || !recorded) {
+  if (!window.L || !LAYERS) {
     var msg = !window.L
       ? "The map library did not load. Check the internet connection, or add demo/vendor/leaflet.js for offline use (docs/DEMO.md)."
-      : "No demo data. Generate demo/data.js with scripts/export_demo_data.py (docs/DEMO.md).";
+      : "No map layers. Generate demo/layers.js with scripts/export_demo_data.py --layers-out (docs/DEMO.md).";
     var div = document.createElement("div");
     div.className = "nodata"; div.setAttribute("role", "alert"); div.textContent = msg;
     document.querySelector("main").prepend(div);
-    if (!recorded) return;
+    if (!LAYERS) return;
   }
 
   // ---------------------------------------------------------------- maps
@@ -33,7 +36,7 @@
     var m = L.map("map-" + arm, { preferCanvas: true, zoomSnap: 0.25, attributionControl: true });
     m.attributionControl.setPrefix(false);
     var base = L.layerGroup().addTo(m);
-    var d = state.data;
+    var d = LAYERS;
     (d.basemap || []).forEach(function (r) {
       L.polyline(r.p, { color: ROAD, weight: r.c === "motorway" || r.c === "trunk" ? 2.5 : 1.5,
         opacity: 0.9, interactive: false }).addTo(base);
@@ -51,9 +54,9 @@
   }
 
   function fitAll() {
-    var pts = [state.data.depot];
-    (state.data.boundary || []).forEach(function (r) { pts = pts.concat(r); });
-    if (pts.length < 3) {
+    var pts = [LAYERS.depot];
+    (LAYERS.boundary || []).forEach(function (r) { pts = pts.concat(r); });
+    if (pts.length < 3 && state.data) {
       Object.keys(state.data.fleets).forEach(function (k) {
         ARMS.forEach(function (a) { state.data.fleets[k][a].days.forEach(function (d) {
           d.routes.forEach(function (r) { pts = pts.concat(r.path); }); }); });
@@ -79,7 +82,10 @@
   // route at one constant speed (the same for every truck, both plans), which makes a longer
   // route take longer. Stop dwell time is not modelled. animT runs 0 to 1 over the longest
   // route of the day across both plans, and 1 is the finished day.
-  var anim = { t: 1, raf: null, routes: [], t0: 18000, t1: 18000 };
+  // dots is true only while the time-of-day animation is in use (Animate day or its slider).
+  // A finished day, and Play through the days, show routes without trucks, because at the end
+  // of a day every truck sits stacked on the depot (Jordan, 2026-11-01).
+  var anim = { t: 1, raf: null, routes: [], t0: 18000, t1: 18000, dots: false };
   var TRUCK_CAPACITY_M3 = 11;   // medium rigid rear-loader body, docs/FLEET.md
   var FALLBACK_KMH = 30;   // only for an export without planned times
 
@@ -159,6 +165,7 @@
       }
       ra.trail.setLatLngs(pts);
       ra.truck.setLatLng(pos);
+      ra.truck.setOpacity(anim.dots ? 1 : 0);
       var load = 0;
       ra.stops.forEach(function (st) {
         var done = T >= st.leave;
@@ -180,6 +187,7 @@
 
   function playAnim() {
     if (anim.t >= 1) anim.t = 0;
+    anim.dots = true;
     $("anim-play").textContent = "Pause";
     var DURATION_MS = 20000, last = null;
     function frame(now) {
@@ -293,7 +301,7 @@
     drawFleetBars();
   }
 
-  function render() { stopAnim(); anim.t = 1; drawDay(); updatePanels(); }
+  function render() { stopAnim(); anim.t = 1; anim.dots = false; drawDay(); updatePanels(); }
 
 
   // ---------------------------------------------------------------- tables and graphs
@@ -379,9 +387,8 @@
   // ---------------------------------------------------------------- pre-calculated plans
 
   var livePlans = [];
-  var seedIndex = window.SRCRO_SEED_INDEX || [];
   function allPlans() {
-    var seeds = seedIndex.length ? seedIndex.map(function (e) { return e.seed; }) : [recorded.meta.seed];
+    var seeds = seedIndex.length ? seedIndex.map(function (e) { return e.seed; }) : [DEFAULT_SEED];
     var list = seeds.map(function (n) { return { kind: "seed", seed: n, key: "seed:" + n, label: "Scenario, seed " + n }; });
     return list.concat(livePlans);
   }
@@ -403,7 +410,7 @@
     var sc = document.createElement("script");
     sc.src = "seeds/seed-" + n + ".js";
     sc.onload = function () { done(window.SRCRO_SEEDS[n]); };
-    sc.onerror = function () { $("source-note").hidden = false; $("source-note").textContent = "Could not load seed " + n + "."; $("plan").disabled = false; };
+    sc.onerror = function () { $("source-note").hidden = false; $("source-note").textContent = "Could not load seed " + n + ". Check the connection and pick it again."; $("plan").disabled = false; };
     document.head.appendChild(sc);
   }
 
@@ -412,7 +419,6 @@
     var pl = allPlans().filter(function (p) { return p.key === key; })[0];
     if (!pl) return;
     if (pl.kind === "live") return useData(pl.data, "live", pl.key);
-    if (pl.seed === recorded.meta.seed) return useData(recorded, "seed", pl.key);
     $("plan").disabled = true;
     $("source-note").hidden = false;
     $("source-note").textContent = "Loading seed " + pl.seed + ".";
@@ -478,6 +484,124 @@
     }).join("");
   }
 
+  // ---------------------------------------------------------------- planner input and output
+
+  // The 900 pre-calculated runs are the planner's own solution.json files, gzipped in raw/ and
+  // unpacked here. A live run's files come from the live server. The input view is cut from
+  // the same file (settings, requests, intake outcomes), so there is no second copy to drift.
+  var raw = { cache: {}, plan: null };
+  var RAW_PREVIEW_CHARS = 60000;
+
+  function rawSource() {
+    var arm = (document.querySelector('input[name="rawarm"]:checked') || {}).value || "distance";
+    var pl = allPlans().filter(function (p) { return p.key === state.key; })[0];
+    if (!pl) return null;
+    if (pl.kind === "live") {
+      if (!pl.jobId) return null;
+      return { url: LIVE.api + "/api/job/" + pl.jobId + "/solution/" + arm, gz: false, headers: liveHeaders(),
+        name: "live-" + pl.jobId + "-" + state.fleet + "ev-" + arm };
+    }
+    var name = "seed-" + pl.seed + "-" + state.fleet + "ev-" + arm;
+    return { url: "raw/" + name + ".json.gz", gz: true, name: name };
+  }
+
+  function gunzipText(buf) {
+    if (!window.DecompressionStream) return Promise.reject(new Error("this browser cannot unpack the compressed file, use Download compressed original"));
+    var ds = new DecompressionStream("gzip");
+    var stream = new Response(new Blob([buf]).stream().pipeThrough(ds));
+    return stream.text();
+  }
+
+  function loadRaw() {
+    var src = rawSource();
+    if (!src) return Promise.reject(new Error("no file for this scenario"));
+    if (raw.cache[src.url]) return Promise.resolve({ src: src, sol: raw.cache[src.url] });
+    $("raw-status").textContent = "Loading " + src.name;
+    return fetch(src.url, { headers: src.headers || {} }).then(function (r) {
+      if (!r.ok) throw new Error("the file is not available (" + r.status + ")");
+      return src.gz ? r.arrayBuffer().then(gunzipText) : r.text();
+    }).then(function (text) {
+      var sol = { text: text, json: JSON.parse(text) };
+      raw.cache = {}; raw.cache[src.url] = sol;   // one file at a time, they are about 1 MB
+      $("raw-status").textContent = "";
+      return { src: src, sol: sol };
+    });
+  }
+
+  function inputOf(j) {
+    return { _about: "Input of one run, cut from its solution.json. config is the resolved settings, arrivals are every request the planner received, flagged and rejected are the intake outcomes.",
+      tag: j.tag, manifest: j.manifest, config: j.config, depot: j.depot, arrivals: j.arrivals,
+      flagged: j.flagged || [], rejected: j.rejected || [] };
+  }
+
+  function pretty(obj, full) {
+    var t = JSON.stringify(obj, null, 1);
+    if (full || t.length <= RAW_PREVIEW_CHARS) return t;
+    return t.slice(0, RAW_PREVIEW_CHARS) + "\n... cut here, " + Math.round((t.length - RAW_PREVIEW_CHARS) / 1000) + " thousand more characters. Download the file for all of it.";
+  }
+
+  function showRaw(kind) {
+    loadRaw().then(function (res) {
+      var j = res.sol.json, view = $("raw-view");
+      var obj = kind === "in" ? inputOf(j) : j;
+      var sum = kind === "in" ? [
+        [String((j.arrivals || []).length), "Requests that arrived"],
+        [String((j.flagged || []).length), "Flagged at intake"],
+        [String((j.rejected || []).length), "Rejected at intake"],
+        [String(j.config.demand.arrivals_per_day), "Arrivals per day, setting"],
+        [String(j.config.fleet.length), "Trucks in the fleet"]
+      ] : [
+        [String((j.collected || []).length), "Requests collected"],
+        [String(Object.keys(j.day_routes || {}).length), "Days with routes"],
+        [String((j.daily || []).length), "Days simulated"],
+        [fmt(j.kpis.total_emissions_kg_co2e, 0) + " kg", "Tier-1 CO2-e, measured days"]
+      ];
+      $("raw-status").textContent = "Run tag " + j.tag;
+      $("raw-summary").innerHTML = sum.map(function (i) { return '<div><div class="v">' + i[0] + '</div><div class="l">' + i[1] + "</div></div>"; }).join("");
+      var rows = kind === "in" ? (j.arrivals || []).slice(0, 15) : (j.collected || []).slice(0, 15);
+      var wrap = $("raw-table-wrap");
+      if (rows.length) {
+        var cols = Object.keys(rows[0]).filter(function (c) { return typeof rows[0][c] !== "object" || rows[0][c] === null; }).slice(0, 8);
+        $("raw-table").tHead.innerHTML = "<tr>" + cols.map(function (c) { return '<th scope="col">' + c + "</th>"; }).join("") + "</tr>";
+        $("raw-table").tBodies[0].innerHTML = rows.map(function (r) {
+          return "<tr>" + cols.map(function (c) { var v = r[c]; return "<td>" + (typeof v === "number" ? +v.toFixed(5) : v === null ? "" : String(v)) + "</td>"; }).join("") + "</tr>";
+        }).join("");
+        $("raw-table-cap").textContent = "First " + rows.length + (kind === "in" ? " requests that arrived" : " requests collected");
+        wrap.hidden = false;
+      } else { wrap.hidden = true; }
+      view.textContent = pretty(obj, false);
+      view.hidden = false;
+      var gz = $("raw-gz");
+      gz.hidden = !res.src.gz; gz.href = res.src.url; gz.setAttribute("download", res.src.name + ".json.gz");
+    }).catch(function (e) { $("raw-status").textContent = "Could not load: " + e.message; });
+  }
+
+  function downloadRaw(kind) {
+    loadRaw().then(function (res) {
+      var text = kind === "in" ? JSON.stringify(inputOf(res.sol.json), null, 1) : res.sol.text;
+      var url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+      var a = document.createElement("a");
+      a.href = url; a.download = res.src.name + (kind === "in" ? ".input.json" : ".solution.json");
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+    }).catch(function (e) { $("raw-status").textContent = "Could not load: " + e.message; });
+  }
+
+  function rawSetup() {
+    $("raw-view-in").addEventListener("click", function () { showRaw("in"); });
+    $("raw-view-out").addEventListener("click", function () { showRaw("out"); });
+    $("raw-dl-in").addEventListener("click", function () { downloadRaw("in"); });
+    $("raw-dl-out").addEventListener("click", function () { downloadRaw("out"); });
+    // A new scenario or fleet makes what is on screen stale, so it is cleared until asked for.
+    Array.prototype.forEach.call(document.querySelectorAll('input[name="rawarm"]'), function (r) {
+      r.addEventListener("change", function () { rawClear(); });
+    });
+  }
+  function rawClear() {
+    $("raw-view").hidden = true; $("raw-table-wrap").hidden = true; $("raw-summary").innerHTML = "";
+    $("raw-status").textContent = ""; $("raw-gz").hidden = true;
+  }
+
   // ---------------------------------------------------------------- full screen maps
 
   function setExpanded(wrap, on) {
@@ -490,6 +614,8 @@
     setTimeout(function () { ARMS.forEach(function (a) { maps[a].invalidateSize(); }); }, 60);
   }
   function collapseAll() {
+    // Also leave the browser's own full screen, or its fixed layout outlives the overlay class.
+    if (document.fullscreenElement && document.exitFullscreen) { try { document.exitFullscreen().catch(function () {}); } catch (e) { /* already out */ } }
     Array.prototype.forEach.call(document.querySelectorAll(".map-wrap.expanded"), function (w) { setExpanded(w, false); });
   }
   // Full screen is the browser's where it exists, and a fixed overlay where it does not
@@ -520,7 +646,7 @@
       var b = document.createElement("button");
       b.type = "button"; b.textContent = String(n);
       b.setAttribute("aria-label", n + " electric trucks of four");
-      var have = !!state.data.fleets[String(n)];
+      var have = !!(state.data && state.data.fleets[String(n)]);
       b.disabled = !have;
       if (!have) b.title = "Not in this export";
       b.setAttribute("aria-pressed", String(String(n) === state.fleet));
@@ -539,6 +665,8 @@
     });
     syncPlan();
     render();
+    $("rawdata").hidden = false;
+    rawClear();
   }
 
   function stop() {
@@ -598,13 +726,13 @@
     }
   }
 
-  // mode is "seed" for a pre-calculated scenario or "live" for a visitor's re-plan. A seed or
-  // live result carries no static layers, so the boundary and roads of data.js stay on the maps.
+  // mode is "seed" for a pre-calculated scenario or "live" for a visitor's re-plan. Neither
+  // carries map layers, the boundary and roads of layers.js stay on the maps.
   function useData(data, mode, key) {
     stop();
     stopAnim();
     var live = mode === "live";
-    state.data = data === recorded ? recorded : Object.assign({}, recorded, { meta: data.meta, depot: data.depot, fleets: data.fleets });
+    state.data = data;
     state.live = live;
     state.key = key;
     buildFleetButtons();
@@ -622,30 +750,67 @@
   // proxy function of scripts/cloud/live_replan/. Visitors type nothing, the presenter starts
   // the server from presenter.html.
   var LIVE = { api: "" };
+  // TRANSITIONAL. The deployed proxy of 2026-10-31 still wants the old visitor password. The
+  // redeploy of scripts/cloud/live_replan/ makes it optional (empty by default) and ignores
+  // this header, so delete LEGACY_PASSWORD after that deploy (Jordan, 2026-11-01).
+  var LEGACY_PASSWORD = "fyp";
+  function liveHeaders() {
+    var h = { "Content-Type": "application/json" };
+    if (LIVE.api && LEGACY_PASSWORD) h["X-Demo-Password"] = LEGACY_PASSWORD;
+    return h;
+  }
   function liveFetch(path, opts) {
     opts = opts || {};
-    return fetch(LIVE.api + path, { method: opts.method || "GET", headers: { "Content-Type": "application/json" },
+    return fetch(LIVE.api + path, { method: opts.method || "GET", headers: liveHeaders(),
       body: opts.body, cache: "no-store" });
+  }
+
+  // A random id the page keeps so the server can tell one phone from another behind a shared
+  // network address. It is not a login and carries nothing about the visitor.
+  function visitorId() {
+    var id = null;
+    try { id = localStorage.getItem("srcro_visitor"); } catch (e) { /* private mode */ }
+    if (!id || !/^[A-Za-z0-9_-]{8,64}$/.test(id)) {
+      var a = new Uint8Array(12);
+      (window.crypto || window.msCrypto).getRandomValues(a);
+      id = Array.prototype.map.call(a, function (b) { return (b < 16 ? "0" : "") + b.toString(16); }).join("");
+      try { localStorage.setItem("srcro_visitor", id); } catch (e) { /* kept for this page view only */ }
+    }
+    return id;
+  }
+  var VISITOR = visitorId();
+
+  function secs(n) {
+    n = Math.round(n);
+    return n < 90 ? n + " s" : Math.round(n / 60) + " min";
   }
 
   function liveSetup() {
     $("live-random").addEventListener("change", function () { $("live-seed").disabled = this.checked; });
-    $("live-back").addEventListener("click", function () { state.fleet = "1"; pickPlan("seed:" + recorded.meta.seed); $("live-status").textContent = ""; });
+    $("live-back").addEventListener("click", function () { state.fleet = "1"; pickPlan("seed:" + DEFAULT_SEED); $("live-status").textContent = ""; });
     $("live-form").addEventListener("submit", function (ev) {
       ev.preventDefault();
       var body = {
         seed: $("live-random").checked ? null : parseInt($("live-seed").value, 10),
         fleet_ev: parseInt($("live-fleet").value, 10),
-        arrivals_per_day: parseInt($("live-arrivals").value, 10)
+        arrivals_per_day: parseInt($("live-arrivals").value, 10),
+        measure_days: parseInt($("live-days").value, 10),
+        visitor: VISITOR
       };
       $("live-go").disabled = true;
       $("live-status").textContent = "Starting both plans";
       liveFetch("/api/replan", { method: "POST", body: JSON.stringify(body) })
         .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, code: r.status, j: j }; }); })
         .then(function (res) {
-          if (res.code === 401) throw new Error("live re-plan is not open to visitors yet, ask at the stand");
+          if (res.code === 401) throw new Error("the live server refused the request (401), ask at the stand");
+          if (res.code === 429 || res.code === 503) {
+            // A limit, not a fault. The server says which one and when to try again.
+            $("live-go").disabled = false;
+            $("live-status").textContent = res.j.error + (res.j.retry_after_s ? " (about " + secs(res.j.retry_after_s) + ")" : "");
+            return null;
+          }
           if (!res.ok) throw new Error(res.j.error || "the re-plan could not start");
-          poll(res.j.id);
+          if (res) poll(res.j.id);
         })
         .catch(function (e) { $("live-go").disabled = false; $("live-status").textContent = "Could not start: " + e.message; });
     });
@@ -685,7 +850,7 @@
   function refreshStatus() {
     fetch(hosted.control + "/status", { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (s) {
       var line;
-      if (s.expired) line = "The live re-plan has ended for this expo. The recorded run above is still here.";
+      if (s.expired) line = "The live re-plan has ended for this expo. The pre-calculated scenarios above are still here.";
       else if (s.state === "stopped") line = "The live server is off. Ask at the stand and the presenter will start it.";
       else if (s.state === "pending") line = "The live server is starting, about two minutes.";
       else if (s.state === "stopping") line = "The live server is turning off.";
@@ -701,12 +866,15 @@
     liveFetch("/api/health").then(function (r) { return r.json().then(function (j) { return { code: r.status, j: j }; }); })
       .then(function (res) {
         if (res.code === 401) {
-          $("live-server").textContent = "Live re-plan is not open to visitors yet. Ask at the stand.";
+          $("live-server").textContent = "Live re-plan is not open yet. Ask at the stand.";
           $("live-form").hidden = true;
         } else if (res.code !== 200 || !res.j.live) {
           $("live-form").hidden = true;   // still warming up its routing services
         } else {
           $("live-form").hidden = false;
+          var q = res.j.waiting ? res.j.waiting + (res.j.waiting === 1 ? " re-plan is" : " re-plans are") + " waiting" +
+            (res.j.busy ? " behind the one running." : ".") : (res.j.busy ? "One re-plan is running, none waiting." : "Nobody is waiting, a re-plan starts at once.");
+          $("live-queue").textContent = q;
         }
       })
       .catch(function () { $("live-form").hidden = true; });
@@ -719,18 +887,24 @@
       liveFetch("/api/job/" + id).then(function (r) { return r.json(); }).then(function (j) {
         if (!j.progress) return;   // a dropped or refused request, keep polling
         bar.value = j.progress.fraction;
-        var d = j.progress.days_done;
-        $("live-status").textContent = "Planning, distance-only day " + d.distance + " of " + j.progress.days_total +
-          ", emissions-aware day " + d.emissions + " of " + j.progress.days_total + ", " + Math.round(j.elapsed_s) + " s";
-        if (j.state === "running") return;
+        var d = j.progress.days_done, q = j.queue || {};
+        if (j.state === "queued") {
+          $("live-status").textContent = "In the queue, number " + q.position + " of " + q.waiting + " waiting. About " + secs(q.est_wait_s) +
+            " before it starts, then about " + secs(q.est_run_s) + " to run.";
+        } else if (j.state === "running") {
+          $("live-status").textContent = "Planning, distance-only day " + d.distance + " of " + j.progress.days_total +
+            ", emissions-aware day " + d.emissions + " of " + j.progress.days_total + ", " + Math.round(j.elapsed_s) + " s";
+        }
+        if (j.state === "queued" || j.state === "running") return;
         clearInterval(t);
         bar.hidden = true;
         $("live-go").disabled = false;
         if (j.state === "done") {
           $("live-status").textContent = "Done in " + Math.round(j.elapsed_s) + " s. The maps now show the live run.";
           var lf = Object.keys(j.result.fleets)[0];
-          var plan = { kind: "live", key: "live:" + livePlans.length, data: j.result, label: "Live re-plan, scenario " +
-            j.result.meta.seed + ", " + lf + " of four trucks electric, " + j.result.meta.arrivals_per_day + " requests a day" };
+          var plan = { kind: "live", key: "live:" + livePlans.length, data: j.result, jobId: j.id, label: "Live re-plan, scenario " +
+            j.result.meta.seed + ", " + lf + " of four trucks electric, " + j.result.meta.arrivals_per_day + " requests a day, " +
+            j.result.meta.measured_days + " measured days" };
           livePlans.push(plan);
           state.fleet = lf;
           useData(j.result, "live", plan.key);
@@ -779,8 +953,9 @@
     r.addEventListener("change", function () { if (this.checked) setBasemap(this.value); });
   });
   setupFullscreen();
+  rawSetup();
   $("anim-play").addEventListener("click", function () { if (anim.raf) stopAnim(); else { stop(); playAnim(); } });
-  $("anim").addEventListener("input", function () { stopAnim(); anim.t = parseInt(this.value, 10) / 100; applyAnim(); });
+  $("anim").addEventListener("input", function () { stopAnim(); anim.dots = true; anim.t = parseInt(this.value, 10) / 100; applyAnim(); });
   $("plan").addEventListener("change", function () { pickPlan(); });
   function seedClick(ev) {
     var el = ev.target.closest("[data-seed]");
@@ -788,6 +963,9 @@
   }
   $("seed-table").addEventListener("click", seedClick);
   $("chart-seeds").addEventListener("click", seedClick);
-  useData(recorded, "seed", state.key);
+  // The maps and controls are up before any scenario has loaded. Seed 1 loads like any other.
+  buildFleetButtons();
+  syncPlan();
+  pickPlan(state.key);
   liveSetup();
 })();
