@@ -4,42 +4,48 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>Presenter Controls</title>
+<title>Presenter Sign In</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <header class="masthead">
   <p class="kicker">Seeing Reuse: Collection Routing Optimisation</p>
-  <h1>Presenter Controls</h1>
-  <p class="sub">Starts the live re-plan server for visitors. It switches itself off one hour after the last re-plan.</p>
+  <h1 id="page-h">Presenter Sign In</h1>
+  <p class="sub" id="page-sub">Sign in to start and stop the live re-plan server.</p>
+  <a class="presenter-link" href="index.html">Back to the demo</a>
 </header>
 
 <main>
-  <section class="live qr-section" aria-labelledby="qr-h">
-    <h2 id="qr-h">Scan to try it on your phone</h2>
-    <div id="qr" class="qr" role="img" aria-label="QR code for https://srcro.aandster.me/"></div>
-    <p class="qr-url" id="qr-url">https://srcro.aandster.me/</p>
-    <p class="note">Visitors can run the live re-plan from their own phones. Runs queue first in, first out, one at a time. Press F11 or the full screen button to show this big.</p>
-    <button id="qr-full" type="button">Full screen QR code</button>
+  <section class="live login-section" id="login-section" aria-labelledby="login-h">
+    <h2 id="login-h">Sign in</h2>
+    <form id="login-form" method="post" action="presenter.html">
+      <div class="live-grid">
+        <label for="admin-user">Username</label>
+        <input id="admin-user" name="username" type="text" autocomplete="username" value="presenter" required>
+        <label for="admin-pass">Admin password</label>
+        <input id="admin-pass" name="password" type="password" autocomplete="current-password" required>
+      </div>
+      <button id="login-go" type="submit">Sign in</button>
+      <span id="login-msg" class="form-msg" aria-live="polite"></span>
+    </form>
   </section>
 
-  <section class="live" aria-labelledby="server-h">
-    <h2 id="server-h">Live server</h2>
-    <p id="live-server" class="live-server" aria-live="polite">Checking the live server</p>
-    <form id="admin-form" method="post" action="presenter.html">
-      <label for="admin-user">Username</label>
-      <input id="admin-user" name="username" type="text" autocomplete="username" value="presenter" required>
-      <label for="admin-pass">Admin password</label>
-      <input id="admin-pass" name="password" type="password" autocomplete="current-password" required>
-      <button id="admin-start" type="submit" value="start">Start live server</button>
-      <button id="admin-stop" type="submit" value="stop">Stop live server</button>
-      <span id="admin-msg" aria-live="polite"></span>
-    </form>
-    <p class="note"><a href="index.html">Back to the demo</a></p>
-  </section>
+  <div id="dashboard" hidden>
+    <section class="live" aria-labelledby="server-h">
+      <h2 id="server-h">Live server</h2>
+      <p id="live-server" class="live-server" aria-live="polite">Checking the live server</p>
+      <p id="live-queue" class="live-server" aria-live="polite"></p>
+      <p class="note">The server switches itself off one hour after the last re-plan, or after the window ends on Tuesday 3 November 2026 at 09:00 Sydney time.</p>
+      <div class="dash-buttons">
+        <button id="admin-start" type="button">Start live server</button>
+        <button id="admin-stop" type="button">Stop live server</button>
+        <button id="admin-signout" type="button">Sign out</button>
+      </div>
+      <p id="admin-msg" class="form-msg" aria-live="polite"></p>
+    </section>
+  </div>
 </main>
 
-<script src="vendor/qrcode.js"></script>
 <script src="live-config.js"></script>
 <script src="presenter.js"></script>
 </body>

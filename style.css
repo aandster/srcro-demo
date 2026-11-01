@@ -259,10 +259,20 @@ body.fs-open { overflow: hidden; }
 .contract-table th, .contract-table td { text-align: left !important; }
 .rawdata a { color: var(--accent); }
 
-/* Presenter QR code */
+/* QR code of the public page, on the visitor page (Jordan, 2026-11-01), and the presenter link */
 .qr { background: #FFFFFF; border-radius: 8px; width: min(420px, 100%); margin: 8px 0; padding: 0; line-height: 0; }
 .qr svg { width: 100%; height: auto; display: block; }
 .qr-url { font-size: 22px; font-weight: 600; margin: 4px 0 8px; }
+.qr-visitor { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+.qr-visitor .qr { width: 150px; flex: none; margin: 0; }
+.qr-visitor .qr-text h2 { margin: 0 0 4px; }
+.masthead { position: relative; }
+.presenter-link { position: absolute; top: 20px; right: 16px; color: var(--muted); font-size: 14px;
+  border: 1px solid var(--rule); border-radius: 6px; padding: 4px 12px; text-decoration: none; }
+.presenter-link:hover, .presenter-link:focus-visible { color: var(--accent); border-color: var(--accent); }
+.dash-buttons { display: flex; flex-wrap: wrap; gap: 8px 12px; margin: 12px 0 8px; }
+.form-msg { margin: 8px 0 0; min-height: 1.3em; }
+.login-section form .live-grid { margin-bottom: 12px; }
 .qr-section:fullscreen, .qr-section.qr-expanded { display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--ground); padding: 24px; }
 .qr-section:fullscreen .qr, .qr-section.qr-expanded .qr { width: min(80vh, 80vw); }
 .qr-section.qr-expanded { position: fixed; inset: 0; z-index: 5000; }

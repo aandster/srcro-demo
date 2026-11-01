@@ -750,18 +750,9 @@
   // proxy function of scripts/cloud/live_replan/. Visitors type nothing, the presenter starts
   // the server from presenter.html.
   var LIVE = { api: "" };
-  // TRANSITIONAL. The deployed proxy of 2026-10-31 still wants the old visitor password. The
-  // redeploy of scripts/cloud/live_replan/ makes it optional (empty by default) and ignores
-  // this header, so delete LEGACY_PASSWORD after that deploy (Jordan, 2026-11-01).
-  var LEGACY_PASSWORD = "fyp";
-  function liveHeaders() {
-    var h = { "Content-Type": "application/json" };
-    if (LIVE.api && LEGACY_PASSWORD) h["X-Demo-Password"] = LEGACY_PASSWORD;
-    return h;
-  }
   function liveFetch(path, opts) {
     opts = opts || {};
-    return fetch(LIVE.api + path, { method: opts.method || "GET", headers: liveHeaders(),
+    return fetch(LIVE.api + path, { method: opts.method || "GET", headers: { "Content-Type": "application/json" },
       body: opts.body, cache: "no-store" });
   }
   // Whether the live server has a feature. The laptop's own server has all of them. The hosted
