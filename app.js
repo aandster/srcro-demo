@@ -9,7 +9,7 @@
   var PLAY_MS = 1400;
 
   var recorded = window.SRCRO_DEMO;
-  var state = { data: recorded, fleet: null, day: 0, timer: null, live: false };
+  var state = { data: recorded, fleet: null, day: 0, timer: null, live: false, key: "seed:" + recorded.meta.seed };
   var maps = {}, layers = {}, syncing = false, streetLayers = {};
 
   function $(id) { return document.getElementById(id); }
@@ -79,35 +79,75 @@
   // route at one constant speed (the same for every truck, both plans), which makes a longer
   // route take longer. Stop dwell time is not modelled. animT runs 0 to 1 over the longest
   // route of the day across both plans, and 1 is the finished day.
-  var anim = { t: 1, raf: null, routes: [], maxKm: 0 };
+  var anim = { t: 1, raf: null, routes: [], t0: 18000, t1: 18000 };
+  var FALLBACK_KMH = 30;   // only for an export without planned times
 
+  function hhmm(sec) {
+    var m = Math.round(sec / 60), h = Math.floor(m / 60) % 24;
+    return (h < 10 ? "0" : "") + h + ":" + (m % 60 < 10 ? "0" : "") + (m % 60);
+  }
+
+  // Each route becomes a list of anchors (clock time, metres along the road geometry). A truck
+  // drives between two stops at an even pace along the geometry, standing still for each
+  // stop's service time, so the planned arrival and departure times are met exactly.
   function buildRouteAnim(r, colour, g) {
-    var cum = [0], i, geo = 0;
+    var cum = [0], i, d = 0;
     for (i = 1; i < r.path.length; i++) {
-      geo += L.latLng(r.path[i - 1]).distanceTo(L.latLng(r.path[i]));
-      cum.push(geo);
+      d += L.latLng(r.path[i - 1]).distanceTo(L.latLng(r.path[i]));
+      cum.push(d);
     }
-    var scale = geo > 0 ? r.km / geo : 0;
-    cum = cum.map(function (c) { return c * scale; });
+    // First path vertex within 10 m of the closest one, searching forward only, so a road
+    // driven twice maps each visit to its own pass.
+    var from = 0, idx = r.stops.map(function (st) {
+      var best = Infinity, dist = [];
+      for (var k = from; k < r.path.length; k++) {
+        var dl = (r.path[k][0] - st.lat) * 111320, dn = (r.path[k][1] - st.lon) * 111320 * 0.84;
+        dist.push(Math.sqrt(dl * dl + dn * dn));
+        best = Math.min(best, dist[dist.length - 1]);
+      }
+      for (var j = 0; j < dist.length; j++) if (dist[j] <= best + 10) { from = from + j; return from; }
+      return from;
+    });
+    var timed = r.t0 !== null && r.t0 !== undefined && r.t1 !== null && r.t1 !== undefined;
+    var anchors = [];
+    if (timed) {
+      anchors.push({ t: r.t0, d: 0 });
+      r.stops.forEach(function (st, j) {
+        anchors.push({ t: st.t, d: cum[idx[j]] });
+        anchors.push({ t: st.d, d: cum[idx[j]] });
+      });
+      anchors.push({ t: r.t1, d: cum[cum.length - 1] });
+    } else {
+      var t = 18000, perM = 3600 / (FALLBACK_KMH * 1000), last = 0;
+      anchors.push({ t: t, d: 0 });
+      r.stops.forEach(function (st, j) {
+        t += (cum[idx[j]] - last) * perM; last = cum[idx[j]];
+        anchors.push({ t: t, d: last });
+        anchors.push({ t: t, d: last });
+      });
+      anchors.push({ t: t + (cum[cum.length - 1] - last) * perM, d: cum[cum.length - 1] });
+    }
     var trail = L.polyline([], { color: colour, weight: 4, opacity: 1, interactive: false }).addTo(g);
     var truck = L.marker(r.path[0], { interactive: false, keyboard: false, zIndexOffset: 1000,
       icon: L.divIcon({ className: "truck", iconSize: [24, 24],
         html: '<span style="background:' + colour + '">' + r.vehicle + "</span>" }) }).addTo(g);
-    var stops = r.stops.map(function (st) {
-      var best = 0, bd = Infinity;
-      r.path.forEach(function (pt, k) {
-        var dl = pt[0] - st.lat, dn = pt[1] - st.lon, d2 = dl * dl + dn * dn;
-        if (d2 < bd) { bd = d2; best = k; }
-      });
-      return { at: cum[best], marker: st.marker };
-    });
-    return { path: r.path, cum: cum, km: r.km, trail: trail, truck: truck, stops: stops, colour: colour };
+    var stops = r.stops.map(function (st, j) { return { leave: anchors[2 * j + 2].t, marker: st.marker }; });
+    return { path: r.path, cum: cum, anchors: anchors, trail: trail, truck: truck, stops: stops, colour: colour };
+  }
+
+  function distanceAt(ra, T) {
+    var a = ra.anchors, k = 0;
+    if (T <= a[0].t) return 0;
+    if (T >= a[a.length - 1].t) return a[a.length - 1].d;
+    while (k < a.length - 2 && a[k + 1].t <= T) k++;
+    var span = a[k + 1].t - a[k].t;
+    return span > 0 ? a[k].d + (a[k + 1].d - a[k].d) * (T - a[k].t) / span : a[k + 1].d;
   }
 
   function applyAnim() {
-    var s = anim.t * anim.maxKm;
+    var T = anim.t0 + anim.t * (anim.t1 - anim.t0);
     anim.routes.forEach(function (ra) {
-      var d = Math.min(s, ra.km), k = 0;
+      var d = distanceAt(ra, T), k = 0;
       while (k < ra.cum.length - 1 && ra.cum[k + 1] <= d) k++;
       var pts = ra.path.slice(0, k + 1), pos = ra.path[k];
       if (k < ra.path.length - 1 && ra.cum[k + 1] > ra.cum[k]) {
@@ -118,13 +158,12 @@
       ra.trail.setLatLngs(pts);
       ra.truck.setLatLng(pos);
       ra.stops.forEach(function (st) {
-        var done = d >= st.at;
+        var done = T >= st.leave;
         st.marker.setStyle({ fillColor: done ? ra.colour : "#FFFFFF", fillOpacity: done ? 1 : 0.35 });
       });
     });
-    var done = anim.t >= 1;
     $("anim").value = String(Math.round(anim.t * 100));
-    $("anim-label").textContent = done ? "end of day" : fmt(s, 0) + " of " + fmt(anim.maxKm, 0) + " km along the longest route";
+    $("anim-label").textContent = anim.t >= 1 ? "end of day, last truck back at " + hhmm(anim.t1) : hhmm(T);
   }
 
   function stopAnim() {
@@ -136,7 +175,7 @@
   function playAnim() {
     if (anim.t >= 1) anim.t = 0;
     $("anim-play").textContent = "Pause";
-    var DURATION_MS = 14000, last = null;
+    var DURATION_MS = 20000, last = null;
     function frame(now) {
       if (last === null) last = now;
       anim.t = Math.min(1, anim.t + (now - last) / DURATION_MS);
@@ -151,7 +190,6 @@
   function drawDay() {
     var lvl = state.data.fleets[state.fleet];
     anim.routes = [];
-    anim.maxKm = 0;
     ARMS.forEach(function (arm) {
       var g = layers[arm];
       g.clearLayers();
@@ -159,7 +197,6 @@
       if (!day) return;
       day.routes.forEach(function (r) {
         var colour = r.kind === "electric" ? ELECTRIC : DIESEL;
-        anim.maxKm = Math.max(anim.maxKm, r.km);
         // A white casing under each route keeps it readable over the road layer and
         // street tiles. The full route stays faint underneath the trail, so the plan is
         // visible while the truck is part way along it.
@@ -179,6 +216,13 @@
         anim.routes.push(buildRouteAnim(r, colour, g));
       });
     });
+    // One clock for both plans, from the earliest departure to the last truck home.
+    anim.t0 = Infinity; anim.t1 = 0;
+    anim.routes.forEach(function (ra) {
+      anim.t0 = Math.min(anim.t0, ra.anchors[0].t);
+      anim.t1 = Math.max(anim.t1, ra.anchors[ra.anchors.length - 1].t);
+    });
+    if (!isFinite(anim.t0)) { anim.t0 = 18000; anim.t1 = 18001; }
     applyAnim();
   }
 
@@ -233,7 +277,9 @@
     Array.prototype.forEach.call(document.querySelectorAll(".fs-day"), function (e) {
       e.textContent = "Day " + (state.day + 1) + " of " + n;
     });
-    $("run-table").tBodies[0].innerHTML = KPI_ROWS.map(function (r) {
+    $("run-table").tBodies[0].innerHTML = KPI_ROWS.filter(function (r) {
+      return kd[r[1]] !== null && kd[r[1]] !== undefined || ke[r[1]] !== null && ke[r[1]] !== undefined;
+    }).map(function (r) {
       return "<tr><th scope=\"row\">" + r[0] + "</th><td>" + fmt(kd[r[1]], r[2]) + "</td><td>" + fmt(ke[r[1]], r[2]) +
         "</td><td>" + signed(ke[r[1]] - kd[r[1]], r[2]) + "</td></tr>";
     }).join("");
@@ -252,7 +298,14 @@
     ["Requests collected", "requests_served", 0],
     ["Distance, km", "km_total", 0],
     ["Diesel distance, km", "km_diesel", 0],
-    ["Electric distance, km", "km_electric", 0]
+    ["Electric distance, km", "km_electric", 0],
+    ["Collected on the advised day, percent", "advised_on_time_pct", 1],
+    ["Collected within one business day of the advised day, percent", "late_within_1_bday_pct", 1],
+    ["Collected within 7 business days of booking, percent", "pct_within_7_bdays", 1],
+    ["Mean wait, business days", "mean_age_bdays", 2],
+    ["90th percentile wait, business days", "p90_age_bdays", 1],
+    ["Longest wait, business days", "max_age_bdays", 0],
+    ["Requests waiting at steady state", "steady_state_backlog", 1]
   ];
 
   function niceMax(v) {
@@ -320,28 +373,103 @@
   // ---------------------------------------------------------------- pre-calculated plans
 
   var livePlans = [];
+  var seedIndex = window.SRCRO_SEED_INDEX || [];
   function allPlans() {
-    var list = Object.keys(recorded.fleets).sort().map(function (k) {
-      return { live: false, fleet: k, data: recorded,
-        label: "Recorded run, scenario " + recorded.meta.seed + ", " + k + " of four trucks electric" };
-    });
+    var seeds = seedIndex.length ? seedIndex.map(function (e) { return e.seed; }) : [recorded.meta.seed];
+    var list = seeds.map(function (n) { return { kind: "seed", seed: n, key: "seed:" + n, label: "Scenario, seed " + n }; });
     return list.concat(livePlans);
   }
   function syncPlan() {
-    var sel = $("plan"), list = allPlans(), cur = state.live ? state.data : recorded;
+    var sel = $("plan");
     sel.innerHTML = "";
-    list.forEach(function (pl, i) {
+    allPlans().forEach(function (pl) {
       var o = document.createElement("option");
-      o.value = String(i); o.textContent = pl.label;
-      if ((pl.live ? pl.data.meta === cur.meta : !state.live) && pl.fleet === state.fleet) o.selected = true;
+      o.value = pl.key; o.textContent = pl.label;
+      if (pl.key === state.key) o.selected = true;
       sel.appendChild(o);
     });
+    renderSeeds();
   }
-  function pickPlan() {
-    var pl = allPlans()[parseInt($("plan").value, 10)];
+
+  function loadSeed(n, done) {
+    window.SRCRO_SEEDS = window.SRCRO_SEEDS || {};
+    if (window.SRCRO_SEEDS[n]) return done(window.SRCRO_SEEDS[n]);
+    var sc = document.createElement("script");
+    sc.src = "seeds/seed-" + n + ".js";
+    sc.onload = function () { done(window.SRCRO_SEEDS[n]); };
+    sc.onerror = function () { $("source-note").hidden = false; $("source-note").textContent = "Could not load seed " + n + "."; $("plan").disabled = false; };
+    document.head.appendChild(sc);
+  }
+
+  function pickPlan(key) {
+    key = typeof key === "string" ? key : $("plan").value;
+    var pl = allPlans().filter(function (p) { return p.key === key; })[0];
     if (!pl) return;
-    state.fleet = pl.fleet;
-    useData(pl.data, pl.live);
+    if (pl.kind === "live") return useData(pl.data, "live", pl.key);
+    if (pl.seed === recorded.meta.seed) return useData(recorded, "seed", pl.key);
+    $("plan").disabled = true;
+    $("source-note").hidden = false;
+    $("source-note").textContent = "Loading seed " + pl.seed + ".";
+    loadSeed(pl.seed, function (d) { $("plan").disabled = false; useData(d, "seed", pl.key); });
+  }
+
+  // ---------------------------------------------------------------- all scenarios
+
+  function seedChange(e, fleet) {
+    var f = e.by_fleet[fleet];
+    if (!f || !f.distance) return null;
+    return { d: f.distance, e: f.emissions, pct: (f.emissions - f.distance) / f.distance * 100 };
+  }
+
+  function renderSeeds() {
+    var sec = $("seeds");
+    if (!seedIndex.length || state.fleet === null) return;
+    sec.hidden = false;
+    var rows = seedIndex.map(function (e) { return { seed: e.seed, c: seedChange(e, state.fleet), raw: e.by_fleet[state.fleet] }; });
+    var ok = rows.filter(function (r) { return r.c; });
+    var pcts = ok.map(function (r) { return r.c.pct; }).sort(function (a, b) { return a - b; });
+    var med = pcts.length ? (pcts[Math.floor((pcts.length - 1) / 2)] + pcts[Math.ceil((pcts.length - 1) / 2)]) / 2 : null;
+    var lower = ok.filter(function (r) { return r.c.pct < 0; }).length;
+    var items = pcts.length ? [
+      [signed(med, 1) + "%", "Median change in CO2-e per request"],
+      [signed(pcts[0], 1) + "% to " + signed(pcts[pcts.length - 1], 1) + "%", "Range over the seeds"],
+      [lower + " of " + ok.length, "Seeds where emissions-aware is lower"]
+    ] : [["n/a", "No change to show, the distance-only plan already emits nothing at this fleet"]];
+    $("seed-summary").innerHTML = items.map(function (i) {
+      return '<div><div class="v">' + i[0] + '</div><div class="l">' + i[1] + "</div></div>";
+    }).join("");
+
+    var W = 560, H = 260, l = 52, r = 16, t = 34, b = 34;
+    var lo = Math.min(0, pcts[0] || 0), hi = Math.max(0, pcts[pcts.length - 1] || 0);
+    var span = Math.max(1, hi - lo);
+    var n = seedIndex.length;
+    function X(i) { return l + (W - l - r) * (i + 0.5) / n; }
+    function Y(v) { return t + (H - t - b) * (1 - (v - lo) / span); }
+    var svg = "";
+    for (var q = 0; q <= 4; q++) {
+      var v = lo + span * q / 4, y = Y(v);
+      svg += '<line class="ch-axis" x1="' + l + '" x2="' + (W - r) + '" y1="' + y + '" y2="' + y + '"/>' +
+        '<text class="ch-text" x="' + (l - 6) + '" y="' + (y + 4) + '" text-anchor="end">' + String(+v.toFixed(0)) + "%</text>";
+    }
+    svg += '<line class="ch-now" x1="' + l + '" x2="' + (W - r) + '" y1="' + Y(0) + '" y2="' + Y(0) + '"/>';
+    rows.forEach(function (rw, i) {
+      if (!rw.c) return;
+      var cur = state.key === "seed:" + rw.seed;
+      svg += '<circle cx="' + X(i) + '" cy="' + Y(rw.c.pct) + '" r="' + (cur ? 6 : 3.5) + '" class="' + (cur ? "ch-dot-now" : "ch-dot") +
+        '" data-seed="' + rw.seed + '"><title>Seed ' + rw.seed + ", " + signed(rw.c.pct, 1) + "%</title></circle>";
+    });
+    svg += '<text class="ch-text" x="' + l + '" y="' + (H - 14) + '">Seed ' + seedIndex[0].seed + '</text><text class="ch-text" x="' + (W - r) +
+      '" y="' + (H - 14) + '" text-anchor="end">Seed ' + seedIndex[n - 1].seed + "</text>";
+    $("chart-seeds").innerHTML = svg;
+
+    $("seed-table").tBodies[0].innerHTML = rows.map(function (rw) {
+      var cur = state.key === "seed:" + rw.seed;
+      return "<tr" + (cur ? ' class="cur"' : "") + '><th scope="row"><button type="button" class="linkbtn" data-seed="' + rw.seed +
+        '">Seed ' + rw.seed + "</button></th>" +
+        (rw.c ? "<td>" + fmt(rw.c.d, 2) + "</td><td>" + fmt(rw.c.e, 2) + "</td><td>" + signed(rw.c.e - rw.c.d, 2) +
+          "</td><td>" + signed(rw.c.pct, 1) + "%</td>"
+          : "<td>" + fmt(rw.raw && rw.raw.distance, 2) + "</td><td>" + fmt(rw.raw && rw.raw.emissions, 2) + "</td><td>n/a</td><td>n/a</td>") + "</tr>";
+    }).join("");
   }
 
   // ---------------------------------------------------------------- full screen maps
@@ -349,8 +477,8 @@
   function setExpanded(wrap, on) {
     wrap.classList.toggle("expanded", on);
     var btn = wrap.querySelector(".fs-btn");
-    btn.textContent = on ? "Exit full screen" : "Full screen";
     btn.setAttribute("aria-pressed", String(on));
+    btn.setAttribute("aria-label", (on ? "Exit full screen, " : "Full screen, ") + btn.getAttribute("data-map") + " map");
     document.body.classList.toggle("fs-open", on);
     // The container changes size under Leaflet, so it re-measures once the layout settles.
     setTimeout(function () { ARMS.forEach(function (a) { maps[a].invalidateSize(); }); }, 60);
@@ -425,40 +553,54 @@
     state.day += 1; $("day").value = String(state.day + 1); render();
   }
 
-  function streetToggle(on) {
+  var BASEMAPS = {
+    street: { url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png", opacity: 0.6, maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' },
+    satellite: { url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      opacity: 0.9, maxZoom: 19,
+      attribution: "Imagery &copy; Esri, Maxar, Earthstar Geographics and the GIS User Community" }
+  };
+  function setBasemap(mode) {
     ARMS.forEach(function (a) {
-      if (on && !streetLayers[a]) {
-        streetLayers[a] = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-          maxZoom: 19, opacity: 0.6,
-          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        });
+      Object.keys(BASEMAPS).forEach(function (k) {
+        var layer = streetLayers[a + k];
+        if (layer && k !== mode) maps[a].removeLayer(layer);
+      });
+      if (!BASEMAPS[mode]) return;
+      var key = a + mode;
+      if (!streetLayers[key]) {
+        var b = BASEMAPS[mode];
+        streetLayers[key] = L.tileLayer(b.url, { maxZoom: b.maxZoom, opacity: b.opacity, attribution: b.attribution });
       }
-      if (on) streetLayers[a].addTo(maps[a]);
-      else if (streetLayers[a]) maps[a].removeLayer(streetLayers[a]);
+      streetLayers[key].addTo(maps[a]);
+      streetLayers[key].bringToBack();
     });
   }
 
   function showSource(data) {
     var m = data.meta;
     var note = $("source-note");
-    if (state.live) {
-      note.hidden = false;
+    note.hidden = false;
+    if (m.test_data) {
+      note.textContent = "TEST DATA from the unit test fixture. Not a run of the planner.";
+    } else if (state.live) {
       note.textContent = "Showing the live re-plan, scenario " + m.seed + ", " + m.arrivals_per_day +
         " requests a day, " + days(m.measured_days, "measured") + " after " + days(m.warmup_days, "warm-up") + ".";
-    } else if (m.test_data) {
-      note.hidden = false;
-      note.textContent = "TEST DATA from the unit test fixture. Not a run of the planner.";
     } else {
-      note.hidden = true;
+      note.textContent = "Pre-calculated scenario, seed " + m.seed + ", " + m.arrivals_per_day +
+        " requests a day, " + days(m.measured_days, "measured") + " after " + days(m.warmup_days, "warm-up") + ".";
     }
   }
 
-  function useData(data, live) {
+  // mode is "seed" for a pre-calculated scenario or "live" for a visitor's re-plan. A seed or
+  // live result carries no static layers, so the boundary and roads of data.js stay on the maps.
+  function useData(data, mode, key) {
     stop();
-    // The live result carries one fleet level and no static layers, so the boundary and
-    // roads of the recorded export stay on the maps.
-    state.data = live ? Object.assign({}, recorded, { meta: data.meta, depot: data.depot, fleets: data.fleets }) : recorded;
+    stopAnim();
+    var live = mode === "live";
+    state.data = data === recorded ? recorded : Object.assign({}, recorded, { meta: data.meta, depot: data.depot, fleets: data.fleets });
     state.live = live;
+    state.key = key;
     buildFleetButtons();
     var keys = Object.keys(state.data.fleets).sort();
     var k = state.data.fleets[state.fleet] ? state.fleet : (state.data.fleets["1"] ? "1" : keys[0]);
@@ -482,7 +624,7 @@
 
   function liveSetup() {
     $("live-random").addEventListener("change", function () { $("live-seed").disabled = this.checked; });
-    $("live-back").addEventListener("click", function () { state.fleet = "1"; useData(recorded, false); $("live-status").textContent = ""; });
+    $("live-back").addEventListener("click", function () { state.fleet = "1"; pickPlan("seed:" + recorded.meta.seed); $("live-status").textContent = ""; });
     $("live-form").addEventListener("submit", function (ev) {
       ev.preventDefault();
       var body = {
@@ -506,13 +648,10 @@
     if (local) {
       // Served by scripts/demo_server.py on the laptop, task 063's path, unchanged.
       liveFetch("/api/health").then(function (r) { return r.json(); }).then(function (h) {
-        if (!h.live) {
-          $("live-off").textContent = "Live re-plan is off, the routing services are not running on this laptop.";
-          return;
-        }
-        $("live-off").hidden = true;
+        if (!h.live) return;   // routing services are down, the section stays out of sight
+        $("live").hidden = false;
         $("live-form").hidden = false;
-      }).catch(function () { /* no server, keep the hosted wording */ });
+      }).catch(function () { /* no server, the section stays hidden */ });
       return;
     }
     var cfg = window.SRCRO_LIVE;
@@ -531,7 +670,7 @@
 
   function hostedSetup(control) {
     hosted.control = control;
-    $("live-off").hidden = true;
+    $("live").hidden = false;
     $("live-hosted").hidden = false;
     refreshStatus();
     hosted.timer = setInterval(function () { if (!document.hidden) refreshStatus(); }, 15000);
@@ -584,10 +723,11 @@
         if (j.state === "done") {
           $("live-status").textContent = "Done in " + Math.round(j.elapsed_s) + " s. The maps now show the live run.";
           var lf = Object.keys(j.result.fleets)[0];
-          livePlans.push({ live: true, fleet: lf, data: j.result, label: "Live re-plan, scenario " + j.result.meta.seed +
-            ", " + lf + " of four trucks electric, " + j.result.meta.arrivals_per_day + " requests a day" });
+          var plan = { kind: "live", key: "live:" + livePlans.length, data: j.result, label: "Live re-plan, scenario " +
+            j.result.meta.seed + ", " + lf + " of four trucks electric, " + j.result.meta.arrivals_per_day + " requests a day" };
+          livePlans.push(plan);
           state.fleet = lf;
-          useData(j.result, true);
+          useData(j.result, "live", plan.key);
           if (hosted.control) refreshStatus();
         } else {
           $("live-status").textContent = "The re-plan failed: " + (j.error || "unknown error");
@@ -621,11 +761,19 @@
   }
   $("day").addEventListener("input", function () { stop(); state.day = parseInt(this.value, 10) - 1; render(); });
   $("play").addEventListener("click", function () { if (state.timer) stop(); else play(); });
-  $("street").addEventListener("change", function () { streetToggle(this.checked); });
+  Array.prototype.forEach.call(document.querySelectorAll('input[name="basemap"]'), function (r) {
+    r.addEventListener("change", function () { if (this.checked) setBasemap(this.value); });
+  });
   setupFullscreen();
   $("anim-play").addEventListener("click", function () { if (anim.raf) stopAnim(); else { stop(); playAnim(); } });
   $("anim").addEventListener("input", function () { stopAnim(); anim.t = parseInt(this.value, 10) / 100; applyAnim(); });
-  $("plan").addEventListener("change", pickPlan);
-  useData(recorded, false);
+  $("plan").addEventListener("change", function () { pickPlan(); });
+  function seedClick(ev) {
+    var el = ev.target.closest("[data-seed]");
+    if (el) { pickPlan("seed:" + el.getAttribute("data-seed")); $("plan").scrollIntoView({ block: "center" }); }
+  }
+  $("seed-table").addEventListener("click", seedClick);
+  $("chart-seeds").addEventListener("click", seedClick);
+  useData(recorded, "seed", state.key);
   liveSetup();
 })();

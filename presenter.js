@@ -29,21 +29,27 @@
     }).catch(function () { $("live-server").textContent = "Could not reach the live server's status."; });
   }
 
-  $("admin-form").addEventListener("submit", function (ev) {
+  // Both buttons submit the one form, so a password manager sees an ordinary sign-in form
+  // (username and password fields, one submit) and offers to fill and save it.
+  function send(action, ev) {
     ev.preventDefault();
-    $("admin-start").disabled = true;
-    $("admin-msg").textContent = "Asking AWS to start the server";
-    fetch(control + "/start", { method: "POST", headers: { "Content-Type": "application/json" },
+    var btns = [$("admin-start"), $("admin-stop")];
+    btns.forEach(function (b) { b.disabled = true; });
+    $("admin-msg").textContent = action === "stop" ? "Asking AWS to stop the server" : "Asking AWS to start the server";
+    fetch(control + "/" + action, { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ password: $("admin-pass").value }) })
       .then(function (r) { return r.json().then(function (j) { return { code: r.status, j: j }; }); })
       .then(function (res) {
-        $("admin-start").disabled = false;
-        if (res.code === 202) $("admin-msg").textContent = "Starting. It takes about two minutes.";
-        else if (res.code === 200) $("admin-msg").textContent = "Already running.";
-        else $("admin-msg").textContent = res.j.error || "Could not start the server.";
-        if (res.code < 300) { $("admin-pass").value = ""; refreshStatus(); }
+        btns.forEach(function (b) { b.disabled = false; });
+        if (res.code === 202) $("admin-msg").textContent = action === "stop" ? "Stopping. The server is off in about a minute." : "Starting. It takes about two minutes.";
+        else if (res.code === 200) $("admin-msg").textContent = action === "stop" ? "Already off." : "Already running.";
+        else $("admin-msg").textContent = res.j.error || "Could not reach the control function.";
+        if (res.code < 300) refreshStatus();
       })
-      .catch(function (e) { $("admin-start").disabled = false; $("admin-msg").textContent = "Could not reach AWS: " + e.message; });
+      .catch(function (e) { btns.forEach(function (b) { b.disabled = false; }); $("admin-msg").textContent = "Could not reach AWS: " + e.message; });
+  }
+  $("admin-form").addEventListener("submit", function (ev) {
+    send(ev.submitter && ev.submitter.value === "stop" ? "stop" : "start", ev);
   });
 
   refreshStatus();

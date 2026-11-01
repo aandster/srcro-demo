@@ -18,10 +18,13 @@
   <section class="live" aria-labelledby="server-h">
     <h2 id="server-h">Live server</h2>
     <p id="live-server" class="live-server" aria-live="polite">Checking the live server</p>
-    <form id="admin-form">
+    <form id="admin-form" method="post" action="presenter.html">
+      <label for="admin-user">Username</label>
+      <input id="admin-user" name="username" type="text" autocomplete="username" value="presenter" required>
       <label for="admin-pass">Admin password</label>
-      <input id="admin-pass" type="password" autocomplete="current-password" required>
-      <button id="admin-start" type="submit">Start live server</button>
+      <input id="admin-pass" name="password" type="password" autocomplete="current-password" required>
+      <button id="admin-start" type="submit" value="start">Start live server</button>
+      <button id="admin-stop" type="submit" value="stop">Stop live server</button>
       <span id="admin-msg" aria-live="polite"></span>
     </form>
     <p class="note"><a href="index.html">Back to the demo</a></p>
