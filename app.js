@@ -498,7 +498,7 @@
     if (!pl) return null;
     if (pl.kind === "live") {
       if (!pl.jobId || !liveFeature("solutions")) return null;
-      return { url: LIVE.api + "/api/job/" + pl.jobId + "/solution/" + arm, gz: false, headers: liveHeaders(),
+      return { url: LIVE.api + "/api/job/" + pl.jobId + "/solution/" + arm, gz: false, headers: {},
         name: "live-" + pl.jobId + "-" + state.fleet + "ev-" + arm };
     }
     var name = "seed-" + pl.seed + "-" + state.fleet + "ev-" + arm;
