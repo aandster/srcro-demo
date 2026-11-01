@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Presenter Controls</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="masthead">
+  <p class="kicker">Seeing Reuse: Collection Routing Optimisation</p>
+  <h1>Presenter Controls</h1>
+  <p class="sub">Starts the live re-plan server for visitors. It switches itself off one hour after the last re-plan.</p>
+</header>
+
+<main>
+  <section class="live" aria-labelledby="server-h">
+    <h2 id="server-h">Live server</h2>
+    <p id="live-server" class="live-server" aria-live="polite">Checking the live server</p>
+    <form id="admin-form">
+      <label for="admin-pass">Admin password</label>
+      <input id="admin-pass" type="password" autocomplete="current-password" required>
+      <button id="admin-start" type="submit">Start live server</button>
+      <span id="admin-msg" aria-live="polite"></span>
+    </form>
+    <p class="note"><a href="index.html">Back to the demo</a></p>
+  </section>
+</main>
+
+<script src="live-config.js"></script>
+<script src="presenter.js"></script>
+</body>
+</html>

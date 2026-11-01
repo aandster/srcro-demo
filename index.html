@@ -12,16 +12,15 @@
   <p class="kicker">SENG4001 Honours Capstone, University of Newcastle, 2026</p>
   <h1>Seeing Reuse: Collection Routing Optimisation</h1>
   <p class="sub">Distance-only planning beside emissions-aware planning, on the same requests, the same day and the same fleet.</p>
-  <p class="illustration" id="illustration" role="note">One illustrative run, not a result</p>
+  <p class="byline">Jordan Maddock</p>
 </header>
 
 <main>
-  <section class="explain" aria-labelledby="explain-h">
-    <h2 id="explain-h">What am I looking at</h2>
-    <p>Residents of Newcastle book collections of reusable items. Each business day a planner chooses which requests to collect and routes four trucks. The left map is a planner that only cares about kilometres. The right map is the same planner told to care about carbon dioxide equivalent (CO2-e) instead, where an electric kilometre emits nothing at the tailpipe and a diesel kilometre does. Both face exactly the same requests. Diesel routes are <span class="key diesel">vermillion and dashed</span>, electric routes are <span class="key electric">blue and solid</span>. Use the day slider or Play to replay the run, and the fleet buttons to change how many of the four trucks are electric. The requests are synthetic and every figure here comes from one illustrative run. The tested results are on the poster.</p>
-  </section>
-
   <section class="controls" aria-label="Controls">
+    <div class="plan">
+      <label for="plan">Pre-calculated plan</label>
+      <select id="plan"></select>
+    </div>
     <fieldset class="fleet">
       <legend>Electric trucks of four</legend>
       <div id="fleet-buttons" class="seg" role="group"></div>
@@ -31,26 +30,57 @@
       <label for="day">Day <output id="day-label" for="day">1 of 1</output></label>
       <input id="day" type="range" min="1" max="1" value="1" step="1">
     </div>
-    <label class="toggle"><input id="street" type="checkbox"> Street map (needs internet)</label>
+    <div class="replay">
+      <button id="anim-play" type="button">Animate day</button>
+      <label for="anim">Trucks <output id="anim-label" for="anim">end of day</output></label>
+      <input id="anim" type="range" min="0" max="100" value="100" step="1">
+    </div>
+    <p class="note anim-note">Trucks drive at one constant speed along each planned route, so a longer route takes longer. Stop times are not modelled. A request fills in when its truck has passed it.</p>
+    <label class="toggle"><input id="street" type="checkbox"> Street map, needs internet</label>
     <p id="source-note" class="source-note" hidden></p>
   </section>
 
   <section class="maps">
     <article class="arm" aria-labelledby="h-distance">
       <h2 id="h-distance">Distance-only planning</h2>
-      <div id="map-distance" class="map" role="img" aria-label="Map of the distance-only routes for the selected day"></div>
+      <div class="map-wrap">
+        <div id="map-distance" class="map" role="img" aria-label="Map of the distance-only routes for the selected day"></div>
+        <span class="fs-day" aria-hidden="true"></span>
+        <button type="button" class="fs-btn" data-map="distance" aria-label="Full screen, distance-only map" aria-pressed="false">Full screen</button>
+      </div>
       <dl class="kpis" id="kpi-distance"></dl>
     </article>
     <article class="arm" aria-labelledby="h-emissions">
       <h2 id="h-emissions">Emissions-aware planning</h2>
-      <div id="map-emissions" class="map" role="img" aria-label="Map of the emissions-aware routes for the selected day"></div>
+      <div class="map-wrap">
+        <div id="map-emissions" class="map" role="img" aria-label="Map of the emissions-aware routes for the selected day"></div>
+        <span class="fs-day" aria-hidden="true"></span>
+        <button type="button" class="fs-btn" data-map="emissions" aria-label="Full screen, emissions-aware map" aria-pressed="false">Full screen</button>
+      </div>
       <dl class="kpis" id="kpi-emissions"></dl>
     </article>
   </section>
 
   <section class="compare" aria-labelledby="compare-h">
-    <h2 id="compare-h">Difference, emissions-aware minus distance-only</h2>
+    <h2 id="compare-h">What emissions-aware planning changes</h2>
+    <p class="note">Each figure is the emissions-aware plan minus the distance-only plan, so a negative number means the emissions-aware plan is lower.</p>
     <div id="diff" class="diff"></div>
+    <h3>Whole run</h3>
+    <table id="run-table" class="day-table">
+      <caption class="visually-hidden">Figures for the whole run in each plan, and the change</caption>
+      <thead><tr><th scope="col">Figure</th><th scope="col">Distance-only</th><th scope="col">Emissions-aware</th><th scope="col">Change</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="charts">
+      <figure>
+        <figcaption>CO2-e so far, kg, by day</figcaption>
+        <svg id="chart-cum" viewBox="0 0 560 260" role="img" aria-label="Line chart of CO2-e so far by day for both plans. The same figures are in the table below."></svg>
+      </figure>
+      <figure>
+        <figcaption>CO2-e per request, kg, by electric trucks of four</figcaption>
+        <svg id="chart-fleet" viewBox="0 0 560 260" role="img" aria-label="Bar chart of CO2-e per request for both plans at each number of electric trucks. The figures for the chosen fleet are in the whole run table."></svg>
+      </figure>
+    </div>
     <h3>This day</h3>
     <table id="day-table" class="day-table">
       <caption class="visually-hidden">Figures for the selected day in each plan</caption>
@@ -58,7 +88,7 @@
       <tbody></tbody>
     </table>
     <ul class="legend" aria-label="Map legend">
-      <li><svg width="40" height="10" aria-hidden="true"><line x1="0" y1="5" x2="40" y2="5" stroke="#D55E00" stroke-width="4" stroke-dasharray="8 5"/></svg> Diesel truck route</li>
+      <li><svg width="40" height="10" aria-hidden="true"><line x1="0" y1="5" x2="40" y2="5" stroke="#D55E00" stroke-width="4"/></svg> Diesel truck route</li>
       <li><svg width="40" height="10" aria-hidden="true"><line x1="0" y1="5" x2="40" y2="5" stroke="#0072B2" stroke-width="4"/></svg> Electric truck route</li>
       <li><svg width="14" height="14" aria-hidden="true"><rect x="1" y="1" width="12" height="12" fill="#15181C"/></svg> Depot</li>
       <li><svg width="40" height="10" aria-hidden="true"><line x1="0" y1="5" x2="40" y2="5" stroke="#B9C0C8" stroke-width="3"/></svg> Major road</li>
@@ -70,21 +100,6 @@
     <p id="live-off" class="live-off">Live re-plan runs on the presenter's laptop. Ask at the stand to try it.</p>
     <div id="live-hosted" class="live-hosted" hidden>
       <p id="live-server" class="live-server" aria-live="polite">Checking the live server</p>
-      <form id="live-unlock" class="live-unlock">
-        <label for="live-pass">Demo password</label>
-        <input id="live-pass" type="password" autocomplete="off" required>
-        <button type="submit">Unlock</button>
-        <span id="live-unlock-msg" aria-live="polite"></span>
-      </form>
-      <details class="admin">
-        <summary>Presenter controls</summary>
-        <form id="admin-form">
-          <label for="admin-pass">Admin password</label>
-          <input id="admin-pass" type="password" autocomplete="current-password" required>
-          <button id="admin-start" type="submit">Start live server</button>
-          <span id="admin-msg" aria-live="polite"></span>
-        </form>
-      </details>
     </div>
     <form id="live-form" hidden>
       <p>Run the real planner now on a new short scenario, both plans at once. It takes about a minute.</p>
@@ -107,9 +122,6 @@
   </section>
 </main>
 
-<footer class="foot">
-  <p>Tier-1 CO2-e is distance times a per-vehicle factor, diesel 1000 g per km (unsourced for this truck), electric 0 g per km at the tailpipe. Requests, volumes and locations are synthetic. No claim of minimal emissions. <span id="meta-line"></span></p>
-</footer>
 
 <!-- Leaflet 1.9.4 is the only external script (task 063). A local copy in vendor/ is the
      offline fallback, added on the laptop (docs/DEMO.md). -->

@@ -75,8 +75,83 @@
     });
   }
 
+  // Movement through the day. The export has no clock times, so each truck drives its planned
+  // route at one constant speed (the same for every truck, both plans), which makes a longer
+  // route take longer. Stop dwell time is not modelled. animT runs 0 to 1 over the longest
+  // route of the day across both plans, and 1 is the finished day.
+  var anim = { t: 1, raf: null, routes: [], maxKm: 0 };
+
+  function buildRouteAnim(r, colour, g) {
+    var cum = [0], i, geo = 0;
+    for (i = 1; i < r.path.length; i++) {
+      geo += L.latLng(r.path[i - 1]).distanceTo(L.latLng(r.path[i]));
+      cum.push(geo);
+    }
+    var scale = geo > 0 ? r.km / geo : 0;
+    cum = cum.map(function (c) { return c * scale; });
+    var trail = L.polyline([], { color: colour, weight: 4, opacity: 1, interactive: false }).addTo(g);
+    var truck = L.marker(r.path[0], { interactive: false, keyboard: false, zIndexOffset: 1000,
+      icon: L.divIcon({ className: "truck", iconSize: [24, 24],
+        html: '<span style="background:' + colour + '">' + r.vehicle + "</span>" }) }).addTo(g);
+    var stops = r.stops.map(function (st) {
+      var best = 0, bd = Infinity;
+      r.path.forEach(function (pt, k) {
+        var dl = pt[0] - st.lat, dn = pt[1] - st.lon, d2 = dl * dl + dn * dn;
+        if (d2 < bd) { bd = d2; best = k; }
+      });
+      return { at: cum[best], marker: st.marker };
+    });
+    return { path: r.path, cum: cum, km: r.km, trail: trail, truck: truck, stops: stops, colour: colour };
+  }
+
+  function applyAnim() {
+    var s = anim.t * anim.maxKm;
+    anim.routes.forEach(function (ra) {
+      var d = Math.min(s, ra.km), k = 0;
+      while (k < ra.cum.length - 1 && ra.cum[k + 1] <= d) k++;
+      var pts = ra.path.slice(0, k + 1), pos = ra.path[k];
+      if (k < ra.path.length - 1 && ra.cum[k + 1] > ra.cum[k]) {
+        var f = (d - ra.cum[k]) / (ra.cum[k + 1] - ra.cum[k]);
+        pos = [ra.path[k][0] + (ra.path[k + 1][0] - ra.path[k][0]) * f, ra.path[k][1] + (ra.path[k + 1][1] - ra.path[k][1]) * f];
+        pts.push(pos);
+      }
+      ra.trail.setLatLngs(pts);
+      ra.truck.setLatLng(pos);
+      ra.stops.forEach(function (st) {
+        var done = d >= st.at;
+        st.marker.setStyle({ fillColor: done ? ra.colour : "#FFFFFF", fillOpacity: done ? 1 : 0.35 });
+      });
+    });
+    var done = anim.t >= 1;
+    $("anim").value = String(Math.round(anim.t * 100));
+    $("anim-label").textContent = done ? "end of day" : fmt(s, 0) + " of " + fmt(anim.maxKm, 0) + " km along the longest route";
+  }
+
+  function stopAnim() {
+    if (anim.raf) cancelAnimationFrame(anim.raf);
+    anim.raf = null;
+    $("anim-play").textContent = "Animate day";
+  }
+
+  function playAnim() {
+    if (anim.t >= 1) anim.t = 0;
+    $("anim-play").textContent = "Pause";
+    var DURATION_MS = 14000, last = null;
+    function frame(now) {
+      if (last === null) last = now;
+      anim.t = Math.min(1, anim.t + (now - last) / DURATION_MS);
+      last = now;
+      applyAnim();
+      if (anim.t >= 1) { stopAnim(); return; }
+      anim.raf = requestAnimationFrame(frame);
+    }
+    anim.raf = requestAnimationFrame(frame);
+  }
+
   function drawDay() {
     var lvl = state.data.fleets[state.fleet];
+    anim.routes = [];
+    anim.maxKm = 0;
     ARMS.forEach(function (arm) {
       var g = layers[arm];
       g.clearLayers();
@@ -84,24 +159,27 @@
       if (!day) return;
       day.routes.forEach(function (r) {
         var colour = r.kind === "electric" ? ELECTRIC : DIESEL;
+        anim.maxKm = Math.max(anim.maxKm, r.km);
         // A white casing under each route keeps it readable over the road layer and
-        // street tiles, and the dash keeps diesel apart from electric without colour.
+        // street tiles. The full route stays faint underneath the trail, so the plan is
+        // visible while the truck is part way along it.
         L.polyline(r.path, { color: "#FFFFFF", weight: 7, opacity: 0.85, interactive: false }).addTo(g);
-        L.polyline(r.path, { color: colour, weight: 4, opacity: 1,
-          dashArray: r.kind === "diesel" ? "9 6" : null })
+        L.polyline(r.path, { color: colour, weight: 4, opacity: 0.35 })
           .bindTooltip("Truck " + r.vehicle + (r.trip > 1 ? ", trip " + r.trip : "") + ", " +
             (r.kind === "electric" ? "electric" : "diesel") + ", " + fmt(r.km, 1) + " km, " +
             fmt(r.co2e_kg, 1) + " kg CO2-e, " + r.stops.length + " stops", { sticky: true })
           .addTo(g);
-        r.stops.forEach(function (s) {
-          L.circleMarker([s.lat, s.lon], { radius: 5, color: "#FFFFFF", weight: 1.5,
+        r.stops.forEach(function (st) {
+          st.marker = L.circleMarker([st.lat, st.lon], { radius: 5, color: "#FFFFFF", weight: 1.5,
             fillColor: colour, fillOpacity: 1 })
-            .bindTooltip("Request " + s.id + ", " + fmt(s.vol, 1) + " m3, waited " +
-              s.age + (s.age === 1 ? " business day" : " business days"))
+            .bindTooltip("Request " + st.id + ", " + fmt(st.vol, 1) + " m3, waited " +
+              st.age + (st.age === 1 ? " business day" : " business days"))
             .addTo(g);
         });
+        anim.routes.push(buildRouteAnim(r, colour, g));
       });
     });
+    applyAnim();
   }
 
   // ---------------------------------------------------------------- panels
@@ -128,11 +206,11 @@
     var dKg = ke.co2e_kg_per_request - kd.co2e_kg_per_request;
     var p = pct(ke.co2e_kg_per_request, kd.co2e_kg_per_request);
     var items = [
-      [signed(dKg, 2) + " kg", "CO2-e per request"],
-      [p === null ? "n/a" : signed(p, 1) + "%", "CO2-e per request, percent"],
-      [signed(ke.km_total - kd.km_total, 0) + " km", "Distance"],
-      [signed(ke.km_diesel - kd.km_diesel, 0) + " km", "Diesel distance"],
-      [signed(ke.km_electric - kd.km_electric, 0) + " km", "Electric distance"]
+      [signed(dKg, 2) + " kg", "Change in CO2-e per request"],
+      [p === null ? "n/a" : signed(p, 1) + "%", "Change in CO2-e per request, percent"],
+      [signed(ke.km_total - kd.km_total, 0) + " km", "Change in distance"],
+      [signed(ke.km_diesel - kd.km_diesel, 0) + " km", "Change in diesel distance"],
+      [signed(ke.km_electric - kd.km_electric, 0) + " km", "Change in electric distance"]
     ];
     $("diff").innerHTML = items.map(function (i) {
       return '<div><div class="v">' + i[0] + '</div><div class="l">' + i[1] + "</div></div>";
@@ -152,9 +230,152 @@
     }).join("");
     var n = lvl.distance.days.length;
     $("day-label").textContent = (state.day + 1) + " of " + n;
+    Array.prototype.forEach.call(document.querySelectorAll(".fs-day"), function (e) {
+      e.textContent = "Day " + (state.day + 1) + " of " + n;
+    });
+    $("run-table").tBodies[0].innerHTML = KPI_ROWS.map(function (r) {
+      return "<tr><th scope=\"row\">" + r[0] + "</th><td>" + fmt(kd[r[1]], r[2]) + "</td><td>" + fmt(ke[r[1]], r[2]) +
+        "</td><td>" + signed(ke[r[1]] - kd[r[1]], r[2]) + "</td></tr>";
+    }).join("");
+    drawCumulative(lvl);
+    drawFleetBars();
   }
 
-  function render() { drawDay(); updatePanels(); }
+  function render() { stopAnim(); anim.t = 1; drawDay(); updatePanels(); }
+
+
+  // ---------------------------------------------------------------- tables and graphs
+
+  var KPI_ROWS = [
+    ["CO2-e per request, kg", "co2e_kg_per_request", 2],
+    ["CO2-e, measured days, kg", "co2e_kg_total", 0],
+    ["Requests collected", "requests_served", 0],
+    ["Distance, km", "km_total", 0],
+    ["Diesel distance, km", "km_diesel", 0],
+    ["Electric distance, km", "km_electric", 0]
+  ];
+
+  function niceMax(v) {
+    if (!(v > 0)) return 1;
+    var p = Math.pow(10, Math.floor(Math.log10(v))), m = v / p;
+    return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p;
+  }
+
+  // Hand-drawn SVG so the page stays offline-capable. Each plan has its own colour, kept apart
+  // from the diesel orange and electric blue of the maps, which mean a truck type.
+  function frame(W, H, l, r, t, b, maxV) {
+    var out = "";
+    for (var i = 0; i <= 4; i++) {
+      var v = maxV * i / 4, y = t + (H - t - b) * (1 - i / 4);
+      out += '<line class="ch-axis" x1="' + l + '" x2="' + (W - r) + '" y1="' + y + '" y2="' + y + '"/>' +
+        '<text class="ch-text" x="' + (l - 6) + '" y="' + (y + 4) + '" text-anchor="end">' + String(+v.toFixed(2)) + "</text>";
+    }
+    return out;
+  }
+  function legend(x, y) {
+    return '<rect class="ch-bar-dist" x="' + x + '" y="' + y + '" width="14" height="10"/><text class="ch-text" x="' + (x + 20) + '" y="' + (y + 9) + '">Distance-only</text>' +
+      '<rect class="ch-bar-emis" x="' + (x + 120) + '" y="' + y + '" width="14" height="10"/><text class="ch-text" x="' + (x + 140) + '" y="' + (y + 9) + '">Emissions-aware</text>';
+  }
+
+  function drawCumulative(lvl) {
+    var W = 560, H = 260, l = 52, r = 16, t = 34, b = 34;
+    var dd = lvl.distance.days, de = lvl.emissions.days, n = dd.length;
+    var top = 0;
+    dd.concat(de).forEach(function (d) { top = Math.max(top, d.co2e_running_kg); });
+    var maxV = niceMax(top);
+    function X(i) { return l + (n > 1 ? i * (W - l - r) / (n - 1) : 0); }
+    function Y(v) { return t + (H - t - b) * (1 - v / maxV); }
+    function path(days) { return days.map(function (d, i) { return (i ? "L" : "M") + X(i).toFixed(1) + " " + Y(d.co2e_running_kg).toFixed(1); }).join(" "); }
+    var svg = frame(W, H, l, r, t, b, maxV);
+    svg += '<path class="ch-dist" d="' + path(dd) + '"/><path class="ch-emis" d="' + path(de) + '"/>';
+    svg += '<line class="ch-now" x1="' + X(state.day) + '" x2="' + X(state.day) + '" y1="' + t + '" y2="' + (H - b) + '"/>';
+    [0, Math.floor((n - 1) / 2), n - 1].forEach(function (i) {
+      svg += '<text class="ch-text" x="' + X(i) + '" y="' + (H - 14) + '" text-anchor="' + (i === n - 1 ? "end" : i === 0 ? "start" : "middle") + '">Day ' + (i + 1) + "</text>";
+    });
+    $("chart-cum").innerHTML = svg + legend(l, 8);
+  }
+
+  function drawFleetBars() {
+    var W = 560, H = 260, l = 52, r = 16, t = 34, b = 34;
+    var keys = Object.keys(state.data.fleets).sort();
+    var top = 0;
+    keys.forEach(function (k) {
+      ARMS.forEach(function (a) { top = Math.max(top, state.data.fleets[k][a].kpis.co2e_kg_per_request); });
+    });
+    var maxV = niceMax(top), slot = (W - l - r) / keys.length, bw = Math.min(34, slot / 3);
+    function Y(v) { return t + (H - t - b) * (1 - v / maxV); }
+    var svg = frame(W, H, l, r, t, b, maxV);
+    keys.forEach(function (k, i) {
+      var cx = l + slot * (i + 0.5);
+      [["distance", -bw - 2, "ch-bar-dist"], ["emissions", 2, "ch-bar-emis"]].forEach(function (a) {
+        var v = state.data.fleets[k][a[0]].kpis.co2e_kg_per_request;
+        svg += '<rect class="' + a[2] + '" x="' + (cx + a[1]) + '" y="' + Y(v) + '" width="' + bw + '" height="' + (Y(0) - Y(v)) + '"><title>' +
+          (a[0] === "distance" ? "Distance-only" : "Emissions-aware") + ", " + k + " electric, " + fmt(v, 2) + " kg per request</title></rect>";
+      });
+      svg += '<text class="ch-text' + (k === state.fleet ? " ch-now-label" : "") + '" x="' + cx + '" y="' + (H - 14) + '" text-anchor="middle">' + k + " electric</text>";
+    });
+    $("chart-fleet").innerHTML = svg + legend(l, 8);
+  }
+
+  // ---------------------------------------------------------------- pre-calculated plans
+
+  var livePlans = [];
+  function allPlans() {
+    var list = Object.keys(recorded.fleets).sort().map(function (k) {
+      return { live: false, fleet: k, data: recorded,
+        label: "Recorded run, scenario " + recorded.meta.seed + ", " + k + " of four trucks electric" };
+    });
+    return list.concat(livePlans);
+  }
+  function syncPlan() {
+    var sel = $("plan"), list = allPlans(), cur = state.live ? state.data : recorded;
+    sel.innerHTML = "";
+    list.forEach(function (pl, i) {
+      var o = document.createElement("option");
+      o.value = String(i); o.textContent = pl.label;
+      if ((pl.live ? pl.data.meta === cur.meta : !state.live) && pl.fleet === state.fleet) o.selected = true;
+      sel.appendChild(o);
+    });
+  }
+  function pickPlan() {
+    var pl = allPlans()[parseInt($("plan").value, 10)];
+    if (!pl) return;
+    state.fleet = pl.fleet;
+    useData(pl.data, pl.live);
+  }
+
+  // ---------------------------------------------------------------- full screen maps
+
+  function setExpanded(wrap, on) {
+    wrap.classList.toggle("expanded", on);
+    var btn = wrap.querySelector(".fs-btn");
+    btn.textContent = on ? "Exit full screen" : "Full screen";
+    btn.setAttribute("aria-pressed", String(on));
+    document.body.classList.toggle("fs-open", on);
+    // The container changes size under Leaflet, so it re-measures once the layout settles.
+    setTimeout(function () { ARMS.forEach(function (a) { maps[a].invalidateSize(); }); }, 60);
+  }
+  function collapseAll() {
+    Array.prototype.forEach.call(document.querySelectorAll(".map-wrap.expanded"), function (w) { setExpanded(w, false); });
+  }
+  // Full screen is the browser's where it exists, and a fixed overlay where it does not
+  // (iPhone Safari), so the button works on every device.
+  function setupFullscreen() {
+    Array.prototype.forEach.call(document.querySelectorAll(".fs-btn"), function (btn) {
+      btn.addEventListener("click", function () {
+        var wrap = btn.closest(".map-wrap");
+        if (wrap.classList.contains("expanded")) {
+          if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen();
+          setExpanded(wrap, false);
+          return;
+        }
+        setExpanded(wrap, true);
+        if (wrap.requestFullscreen) { try { wrap.requestFullscreen().catch(function () {}); } catch (e) { /* overlay only */ } }
+      });
+    });
+    document.addEventListener("fullscreenchange", function () { if (!document.fullscreenElement) collapseAll(); });
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape") collapseAll(); });
+  }
 
   // ---------------------------------------------------------------- controls
 
@@ -182,6 +403,7 @@
     Array.prototype.forEach.call($("fleet-buttons").children, function (b) {
       b.setAttribute("aria-pressed", String(b.textContent === k));
     });
+    syncPlan();
     render();
   }
 
@@ -192,6 +414,7 @@
   }
 
   function play() {
+    stopAnim();
     var n = state.data.fleets[state.fleet].distance.days.length;
     if (state.day >= n - 1) state.day = -1;
     $("play").textContent = "Pause"; $("play").setAttribute("aria-pressed", "true");
@@ -217,7 +440,6 @@
 
   function showSource(data) {
     var m = data.meta;
-    $("illustration").textContent = m.illustration;
     var note = $("source-note");
     if (state.live) {
       note.hidden = false;
@@ -229,10 +451,6 @@
     } else {
       note.hidden = true;
     }
-    $("meta-line").textContent = "Run scenario " + m.seed + ", " + m.arrivals_per_day +
-      " requests a day, " + days(m.measured_days, "measured") + " after " +
-      days(m.warmup_days, "warm-up") + ", commit " + m.commit + ", exported " + m.generated_at + " Sydney time. Routes drawn as " +
-      m.geometry_source + ".";
   }
 
   function useData(data, live) {
@@ -252,23 +470,19 @@
 
   // ---------------------------------------------------------------- live re-plan
 
-  // Where the live API is. On the laptop it is the same origin with no password. On the hosted
-  // page it is the proxy function of scripts/cloud/live_replan/, and every call carries the
-  // demo password, which the proxy checks (the page itself checks nothing, it can be read).
-  var LIVE = { api: "", pass: "" };
+  // Where the live API is. On the laptop it is the same origin. On the hosted page it is the
+  // proxy function of scripts/cloud/live_replan/. Visitors type nothing, the presenter starts
+  // the server from presenter.html.
+  var LIVE = { api: "" };
   function liveFetch(path, opts) {
     opts = opts || {};
-    var h = { "Content-Type": "application/json" };
-    if (LIVE.pass) h["X-Demo-Password"] = LIVE.pass;
-    return fetch(LIVE.api + path, { method: opts.method || "GET", headers: h, body: opts.body, cache: "no-store" });
-  }
-  function store(key, value) {   // per-tab convenience only, the page works without it
-    try { if (value === undefined) return sessionStorage.getItem(key); sessionStorage.setItem(key, value); } catch (e) { return null; }
+    return fetch(LIVE.api + path, { method: opts.method || "GET", headers: { "Content-Type": "application/json" },
+      body: opts.body, cache: "no-store" });
   }
 
   function liveSetup() {
     $("live-random").addEventListener("change", function () { $("live-seed").disabled = this.checked; });
-    $("live-back").addEventListener("click", function () { useData(recorded, false); $("live-status").textContent = ""; });
+    $("live-back").addEventListener("click", function () { state.fleet = "1"; useData(recorded, false); $("live-status").textContent = ""; });
     $("live-form").addEventListener("submit", function (ev) {
       ev.preventDefault();
       var body = {
@@ -281,7 +495,7 @@
       liveFetch("/api/replan", { method: "POST", body: JSON.stringify(body) })
         .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, code: r.status, j: j }; }); })
         .then(function (res) {
-          if (res.code === 401) { relock("The demo password was not accepted."); }
+          if (res.code === 401) throw new Error("live re-plan is not open to visitors yet, ask at the stand");
           if (!res.ok) throw new Error(res.j.error || "the re-plan could not start");
           poll(res.j.id);
         })
@@ -307,9 +521,9 @@
     hostedSetup(cfg.control.replace(/\/$/, ""));
   }
 
-  // ---- hosted page: server status, unlock with the demo password, presenter start
+  // ---- hosted page: server status, the form opens by itself once the presenter's server is on
 
-  var hosted = { control: "", server: null, unlocked: false, timer: null };
+  var hosted = { control: "", timer: null };
 
   function sydneyTime(iso) {
     return new Date(iso).toLocaleTimeString("en-AU", { timeZone: "Australia/Sydney", hour: "numeric", minute: "2-digit" });
@@ -319,37 +533,12 @@
     hosted.control = control;
     $("live-off").hidden = true;
     $("live-hosted").hidden = false;
-    $("live-unlock").addEventListener("submit", function (ev) {
-      ev.preventDefault();
-      LIVE.pass = $("live-pass").value;
-      $("live-unlock-msg").textContent = "Checking";
-      checkUnlock(true);
-    });
-    $("admin-form").addEventListener("submit", function (ev) {
-      ev.preventDefault();
-      $("admin-start").disabled = true;
-      $("admin-msg").textContent = "Asking AWS to start the server";
-      fetch(hosted.control + "/start", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: $("admin-pass").value }) })
-        .then(function (r) { return r.json().then(function (j) { return { code: r.status, j: j }; }); })
-        .then(function (res) {
-          $("admin-start").disabled = false;
-          if (res.code === 202) $("admin-msg").textContent = "Starting. It takes about two minutes.";
-          else if (res.code === 200) $("admin-msg").textContent = "Already running.";
-          else $("admin-msg").textContent = res.j.error || "Could not start the server.";
-          if (res.code < 300) { $("admin-pass").value = ""; refreshStatus(); }
-        })
-        .catch(function (e) { $("admin-start").disabled = false; $("admin-msg").textContent = "Could not reach AWS: " + e.message; });
-    });
-    var saved = store("srcro-live-pass");
-    if (saved) LIVE.pass = saved;
     refreshStatus();
     hosted.timer = setInterval(function () { if (!document.hidden) refreshStatus(); }, 15000);
   }
 
   function refreshStatus() {
     fetch(hosted.control + "/status", { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (s) {
-      hosted.server = s;
       var line;
       if (s.expired) line = "The live re-plan has ended for this expo. The recorded run above is still here.";
       else if (s.state === "stopped") line = "The live server is off. Ask at the stand and the presenter will start it.";
@@ -359,32 +548,23 @@
         " Sydney time, one hour after the last re-plan.";
       else line = "The live server is " + s.state + ".";
       $("live-server").textContent = line;
-      if (s.state === "running" && LIVE.pass) checkUnlock(false);
-      if (s.state !== "running" && hosted.unlocked) { hosted.unlocked = false; $("live-form").hidden = true; $("live-unlock").hidden = false; }
+      if (s.state === "running") checkReady(); else $("live-form").hidden = true;
     }).catch(function () { $("live-server").textContent = "Could not reach the live server's status."; });
   }
 
-  function checkUnlock(fromForm) {
+  function checkReady() {
     liveFetch("/api/health").then(function (r) { return r.json().then(function (j) { return { code: r.status, j: j }; }); })
       .then(function (res) {
-        if (res.code === 401) return relock(fromForm ? "That is not the demo password." : "");
-        if (res.code === 503) { $("live-unlock-msg").textContent = fromForm ? "Password noted. The server is off, it unlocks once it is on." : ""; store("srcro-live-pass", LIVE.pass); return; }
-        if (!res.j.live) { $("live-unlock-msg").textContent = "The server is still warming up its routing services."; store("srcro-live-pass", LIVE.pass); return; }
-        store("srcro-live-pass", LIVE.pass);
-        hosted.unlocked = true;
-        $("live-unlock-msg").textContent = "";
-        $("live-unlock").hidden = true;
-        $("live-form").hidden = false;
+        if (res.code === 401) {
+          $("live-server").textContent = "Live re-plan is not open to visitors yet. Ask at the stand.";
+          $("live-form").hidden = true;
+        } else if (res.code !== 200 || !res.j.live) {
+          $("live-form").hidden = true;   // still warming up its routing services
+        } else {
+          $("live-form").hidden = false;
+        }
       })
-      .catch(function () { $("live-unlock-msg").textContent = fromForm ? "The server is not reachable yet." : ""; });
-  }
-
-  function relock(msg) {
-    LIVE.pass = ""; store("srcro-live-pass", "");
-    hosted.unlocked = false;
-    $("live-form").hidden = true;
-    $("live-unlock").hidden = false;
-    $("live-unlock-msg").textContent = msg;
+      .catch(function () { $("live-form").hidden = true; });
   }
 
   function poll(id) {
@@ -403,6 +583,10 @@
         $("live-go").disabled = false;
         if (j.state === "done") {
           $("live-status").textContent = "Done in " + Math.round(j.elapsed_s) + " s. The maps now show the live run.";
+          var lf = Object.keys(j.result.fleets)[0];
+          livePlans.push({ live: true, fleet: lf, data: j.result, label: "Live re-plan, scenario " + j.result.meta.seed +
+            ", " + lf + " of four trucks electric, " + j.result.meta.arrivals_per_day + " requests a day" });
+          state.fleet = lf;
           useData(j.result, true);
           if (hosted.control) refreshStatus();
         } else {
@@ -438,6 +622,10 @@
   $("day").addEventListener("input", function () { stop(); state.day = parseInt(this.value, 10) - 1; render(); });
   $("play").addEventListener("click", function () { if (state.timer) stop(); else play(); });
   $("street").addEventListener("change", function () { streetToggle(this.checked); });
+  setupFullscreen();
+  $("anim-play").addEventListener("click", function () { if (anim.raf) stopAnim(); else { stop(); playAnim(); } });
+  $("anim").addEventListener("input", function () { stopAnim(); anim.t = parseInt(this.value, 10) / 100; applyAnim(); });
+  $("plan").addEventListener("change", pickPlan);
   useData(recorded, false);
   liveSetup();
 })();
