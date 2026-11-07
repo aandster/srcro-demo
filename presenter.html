@@ -6,13 +6,18 @@
 <meta name="robots" content="noindex">
 <title>Presenter Sign In</title>
 <link rel="stylesheet" href="style.css">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="stylesheet" href="responsive.css">
 </head>
 <body>
 <header class="masthead">
   <p class="kicker">Seeing Reuse: Collection Routing Optimisation</p>
   <h1 id="page-h">Presenter Sign In</h1>
-  <p class="sub" id="page-sub">Sign in to start and stop the live re-plan server.</p>
-  <a class="presenter-link" href="index.html">Back to the demo</a>
+  <p class="sub" id="page-sub">Sign in to start and stop the live plan server.</p>
+  <div class="masthead-actions">
+    <a class="presenter-link" href="index.html">Back to the demo</a>
+    <button id="admin-signout" type="button" class="presenter-link" hidden>Sign out</button>
+  </div>
 </header>
 
 <main>
@@ -35,18 +40,37 @@
       <h2 id="server-h">Live server</h2>
       <p id="live-server" class="live-server" aria-live="polite">Checking the live server</p>
       <p id="live-queue" class="live-server" aria-live="polite"></p>
-      <p class="note">The server switches itself off one hour after the last re-plan, or after the window ends on Tuesday 3 November 2026 at 09:00 Sydney time.</p>
+      <ol id="admin-queue" class="sb-queue" hidden></ol>
+      <p class="note">The server switches itself off 10 minutes after it starts or after the last re-plan has finished, whichever is later, never while a re-plan runs or waits, and starts again by itself when a visitor presses Re-plan now, unless automatic start is off below. It stays off after the window ends on Thursday 31 December 2026 at 11:59 pm Sydney time.</p>
+      <label class="autowake"><input id="admin-autowake" type="checkbox" disabled> Automatic start: a visitor's Re-plan now wakes the server</label>
       <div class="dash-buttons">
         <button id="admin-start" type="button">Start live server</button>
         <button id="admin-stop" type="button">Stop live server</button>
-        <button id="admin-signout" type="button">Sign out</button>
+        <button id="admin-restart" type="button" class="secondary">Restart live server</button>
       </div>
       <p id="admin-msg" class="form-msg" aria-live="polite"></p>
+    </section>
+
+    <section class="live" aria-labelledby="stats-h">
+      <h2 id="stats-h">Run statistics</h2>
+      <p id="stats-summary" class="live-server" aria-live="polite">Loading</p>
+      <p id="stats-server" class="live-server"></p>
+      <div class="stats-grid">
+        <div><h3>Run length</h3><ul id="stats-days" class="stats-list"></ul></div>
+        <div><h3>Electric trucks</h3><ul id="stats-fleet" class="stats-list"></ul></div>
+      </div>
+      <h3>Latest re-plans</h3>
+      <table id="stats-recent" class="stats-table">
+        <thead><tr><th>Time (Sydney)</th><th>Scenario</th><th>Electric</th><th>Requests a day</th><th>Measured days</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <p class="note">Counts re-plans started in the last 72 hours, including your own tests. A run that fails later still counts. Nothing about visitors is kept.</p>
     </section>
   </div>
 </main>
 
 <script src="live-config.js"></script>
 <script src="presenter.js"></script>
+<script src="polish.js"></script>
 </body>
 </html>

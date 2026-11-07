@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Project Results</title>
+<meta name="description" content="Seeing Reuse: Collection Routing Optimisation. The project's tested results and campaign evidence, from the poster and the claims register.">
+<link rel="stylesheet" href="style.css">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Seeing Reuse">
+<meta property="og:title" content="Project Results">
+<meta property="og:description" content="Seeing Reuse: Collection Routing Optimisation. The project's tested results and campaign evidence, from the poster and the claims register.">
+<meta property="og:url" content="https://srcro.aandster.me/results.html">
+<meta property="og:image" content="https://srcro.aandster.me/poster-preview.jpg">
+<meta property="og:image:width" content="1600">
+<meta property="og:image:height" content="1132">
+<meta property="og:image:alt" content="The project poster, Seeing Reuse: Collection Routing Optimisation.">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="responsive.css">
+<link rel="stylesheet" href="results-charts.css">
+</head>
+<body>
+<nav class="topbar" aria-label="Site">
+  <a class="brand" href="index.html"><span class="brand-mark" aria-hidden="true"></span>Seeing Reuse</a>
+  <div class="tabs">
+      <a class="tab-home" href="index.html" aria-label="Home" title="Home"><svg class="ic-home" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3.2 2.5 11h2.7v9.3h5.3v-6h3v6h5.3V11h2.7z" fill="currentColor"/></svg></a>
+      <a href="explore.html">Explore Scenarios</a>
+      <a href="live.html">Live Plan</a>
+      <a href="results.html" aria-current="page">Project Results</a>
+      <a href="qa.html">Q&amp;A</a>
+      <a href="poster">Poster</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="credits.html">Credits</a>
+  </div>
+  <a class="presenter-link" href="presenter.html">Presenter Controls</a>
+</nav>
+<header class="masthead">
+  <h1>Project Results</h1>
+</header>
+
+<main>
+  <section class="poster" id="poster" aria-labelledby="poster-h">
+    <h2 id="poster-h">Tested results</h2>
+    <p class="note">These are the tested results, and they are not figures from the runs on this page. Each ran over seeds fixed in advance and was tested with a paired test, and each carries the caveat beside it. Each line says whether it was pre-registered in git before it ran. The first pre-registration was on 4 October 2026, so the first 30-seed test of the headline and the four-diesel result, run on 2 October, were planned tests and not pre-registered, and the split by assignment is post hoc. Electric trucks count as 0 g CO2-e per km (tank to wheel). The model covers collection routing only, on synthetic requests and a frozen road network. The 1000 g per km diesel factor is not sourced for this truck, so absolute kilograms are not predictions.</p>
+    <ul class="claims">
+      <li><strong>With one or two battery-electric trucks of four</strong>, emissions-aware planning cut tier-1 CO2-e per request by 0.725 kg (28.35 percent) and 0.863 kg (55.78 percent) against distance-only planning, over 100 seeds, pre-registered (the poster prints 28.4 and 55.8). The first test over 30 seeds, run before pre-registration began, gave 0.735 kg (28.57 percent) and 0.837 kg (55.38 percent).</li>
+      <li><strong>Most of that saving, 55.1 to 73.7 percent,</strong> comes from giving the longest routes to the electric trucks. Emissions-aware routing adds a smaller, significant saving on top. A post hoc split, a ratio of means.</li>
+      <li><strong>If electric trucks charge at New South Wales grid factors (600 to 780 g per km)</strong>, the saving falls to 1.48 to 10.75 percent (0.052 to 0.313 kg) per request. Read beside the first line. 30 seeds, pre-registered.</li>
+      <li><strong>With four diesel trucks there was no tier-1 saving.</strong> The gradient objective cost 0.66 to 0.92 percent (0.028 to 0.039 kg) more per request over 30 seeds, a planned test run before pre-registration. The pre-registered 100-seed replication gave +0.27 percent, not significant.</li>
+      <li><strong>At published refuse-truck diesel factors of 2,089 to 3,423 g per km</strong>, the saving stayed within 2 percentage points of its value at 1000 g per km. Pre-registered.</li>
+    </ul>
+    <p class="note">The scenarios on the Explore scenarios page are a separate set of 90 seeds, shown descriptively. They are not these results and do not replace them. No claim here says emissions are minimal.</p>
+  </section>
+
+  <section class="solvers" id="solvers" aria-labelledby="solvers-h" hidden>
+    <h2 id="solvers-h">Solver comparison from the project's campaigns</h2>
+    <p class="note" id="solver-intro"></p>
+    <fieldset class="rawarm"><legend>Fleet</legend>
+      <div class="seg" role="radiogroup">
+        <label><input type="radio" name="solver-fleet" value="0ev"> 0% electric (all diesel)</label>
+        <label><input type="radio" name="solver-fleet" value="1ev" checked> 25% electric</label>
+        <label><input type="radio" name="solver-fleet" value="2ev"> 50% electric</label>
+      </div>
+    </fieldset>
+    <div class="table-scroll">
+      <table class="day-table solver-table" id="solver-table">
+        <thead><tr>
+          <th scope="col">Solver</th>
+          <th scope="col">Status</th>
+          <th scope="col">Distance-only plan, kg CO2-e per request</th>
+          <th scope="col">Emissions-aware plan, kg CO2-e per request</th>
+          <th scope="col">Change, kg (95% interval)</th>
+          <th scope="col">Change, percent</th>
+          <th scope="col">Adjusted p</th>
+          <th scope="col">Solve time per re-plan, distance and emissions plans</th>
+          <th scope="col">Plan cost against VROOM, shared objective</th>
+          <th scope="col">Benchmark gap, set A and X</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="note" id="solver-note"></p>
+    <ul class="claims" id="solver-caveats"></ul>
+  </section>
+
+  <section class="solvers" id="trips" aria-labelledby="trips-h" hidden>
+    <h2 id="trips-h">Multiple trips a day, with technical and rule-driven reductions apart</h2>
+    <p class="note" id="trips-intro"></p>
+    <fieldset class="rawarm"><legend>Measure</legend>
+      <div class="seg" role="radiogroup">
+        <label><input type="radio" name="trips-kpi" value="cmem" checked> CMEM fuel model, with load-aware routing</label>
+        <label><input type="radio" name="trips-kpi" value="tier1"> Tier-1 (distance times factor)</label>
+      </div>
+    </fieldset>
+    <div class="table-scroll">
+      <table class="day-table solver-table" id="trips-table">
+        <thead>
+          <tr><th rowspan="2" scope="col">Fleet and demand</th>
+            <th colspan="2" scope="colgroup">Technical reduction, the planner's own trip rules</th>
+            <th colspan="3" scope="colgroup">Rule-driven extra, from looser trip rules</th>
+            <th colspan="2" scope="colgroup">Both together, a looser-rule figure and not a technical one</th></tr>
+          <tr><th scope="col">kg CO2-e per request</th><th scope="col">Percent</th>
+            <th scope="col">Extra saving, kg (95% interval)</th><th scope="col">Adjusted p</th><th scope="col">Significant</th>
+            <th scope="col">kg CO2-e per request</th><th scope="col">Percent</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="note" id="trips-note"></p>
+  </section>
+
+  <section class="solvers" id="stage2" aria-labelledby="stage2-h" hidden>
+    <h2 id="stage2-h">Load-aware routing stage on one trip a day</h2>
+    <p class="note" id="stage2-intro"></p>
+    <div class="table-scroll">
+      <table class="day-table solver-table" id="stage2-table">
+        <thead><tr>
+          <th scope="col">Fleet</th>
+          <th scope="col">Saving without the stage, CMEM percent</th>
+          <th scope="col">Saving with the stage, CMEM percent (kg per request)</th>
+          <th scope="col">Saving with the stage, tier-1 percent (kg per request)</th>
+          <th scope="col">What the stage took off the emissions-aware plan's own CMEM, percent</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="note" id="stage2-note"></p>
+  </section>
+
+  <section class="solvers" id="gradient" aria-labelledby="gradient-h" hidden>
+    <h2 id="gradient-h">Gradient and elevation explorer, one route</h2>
+    <p class="note" id="gradient-intro"></p>
+    <figure class="grad-figure">
+      <ul class="rc-legend grad-legend">
+        <li><span class="rc-sw gk-line" aria-hidden="true"></span>Height above sea level</li>
+        <li><span class="rc-sw grad-up-sw" aria-hidden="true"></span>Fuel per km, climbing</li>
+        <li><span class="rc-sw grad-down-sw" aria-hidden="true"></span>Fuel per km, descending</li>
+        <li><span class="rc-sw grad-flat-sw" aria-hidden="true"></span>Fuel per km, flat</li>
+        <li><span class="rc-sw gk-stop" aria-hidden="true"></span>Stop, numbered above the profile</li>
+      </ul>
+      <svg id="grad-chart" viewBox="0 0 900 330" role="img" aria-labelledby="grad-chart-title"></svg>
+      <figcaption id="grad-chart-title" class="note"></figcaption>
+    </figure>
+    <p class="note" id="grad-summary"></p>
+    <div class="table-scroll">
+      <table class="day-table solver-table" id="grad-table">
+        <thead><tr>
+          <th scope="col">Leg</th><th scope="col">Distance, km</th><th scope="col">Load carried, m3</th>
+          <th scope="col">Gross mass, kg</th><th scope="col">Climb and descent, m</th>
+          <th scope="col">Fuel, litres</th><th scope="col">Litres per 100 km</th><th scope="col">Fuel if the body were empty, litres</th>
+          <th scope="col">CO2-e, kg</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="note" id="grad-note"></p>
+  </section>
+</main>
+
+<script src="solvers.js"></script>
+<script src="trips.js"></script>
+<script src="gradient.js"></script>
+<script src="views.js"></script>
+<script src="tables.js"></script>
+<script src="polish.js"></script>
+<script src="results-charts.js"></script>
+</body>
+</html>

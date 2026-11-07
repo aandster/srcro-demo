@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Credits</title>
+<meta name="description" content="Seeing Reuse: Collection Routing Optimisation, who made it, the software and data it uses and the references behind it.">
+<link rel="stylesheet" href="style.css">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Seeing Reuse">
+<meta property="og:title" content="Credits">
+<meta property="og:description" content="Seeing Reuse: Collection Routing Optimisation, who made it, the software and data it uses and the references behind it.">
+<meta property="og:url" content="https://srcro.aandster.me/credits.html">
+<meta property="og:image" content="https://srcro.aandster.me/poster-preview.jpg">
+<meta property="og:image:width" content="1600">
+<meta property="og:image:height" content="1132">
+<meta property="og:image:alt" content="The project poster, Seeing Reuse: Collection Routing Optimisation.">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="responsive.css">
+</head>
+<body>
+<nav class="topbar" aria-label="Site">
+  <a class="brand" href="index.html"><span class="brand-mark" aria-hidden="true"></span>Seeing Reuse</a>
+  <div class="tabs">
+      <a class="tab-home" href="index.html" aria-label="Home" title="Home"><svg class="ic-home" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3.2 2.5 11h2.7v9.3h5.3v-6h3v6h5.3V11h2.7z" fill="currentColor"/></svg></a>
+      <a href="explore.html">Explore Scenarios</a>
+      <a href="live.html">Live Plan</a>
+      <a href="results.html">Project Results</a>
+      <a href="qa.html">Q&amp;A</a>
+      <a href="poster">Poster</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="credits.html" aria-current="page">Credits</a>
+  </div>
+  <a class="presenter-link" href="presenter.html">Presenter Controls</a>
+</nav>
+<header class="masthead">
+  <h1>Credits</h1>
+</header>
+
+<main class="credits">
+  <section aria-labelledby="people-h">
+    <h2 id="people-h">People</h2>
+    <dl class="credit-list">
+      <dt>Undergraduate</dt><dd>Jordan Maddock</dd>
+      <dt>Supervisors</dt><dd>Dr Kyle Harrison, Masha Kondrasheva and Marcella Papini</dd>
+    </dl>
+  </section>
+
+  <section aria-labelledby="tools-h">
+    <h2 id="tools-h">Software and data this site runs on</h2>
+    <dl class="credit-list">
+      <dt>OSRM (Open Source Routing Machine)</dt><dd>Road distances, travel times and route shapes</dd>
+      <dt>VROOM</dt><dd>The route planner behind every plan on the site</dd>
+      <dt>OpenStreetMap contributors</dt><dd>The road network and the street background</dd>
+      <dt>Esri, Maxar, Earthstar Geographics and the GIS User Community</dt><dd>The satellite background</dd>
+      <dt>NSW Spatial Services, through ELVIS</dt><dd>The 1 m elevation model behind the road heights</dd>
+      <dt>Leaflet 1.9.4</dt><dd>The maps, BSD-2-Clause</dd>
+      <dt>qrcode-generator 1.4.4, Kazuhiko Arase</dt><dd>The QR code, MIT</dd>
+      <dt>Amazon Web Services</dt><dd>The campaigns, the live plan and the hosting of this site</dd>
+    </dl>
+  </section>
+
+  <section aria-labelledby="arch-link-h">
+    <h2 id="arch-link-h">How the system is built</h2>
+    <p>The four architecture diagrams, from the system's surroundings down to one planning day, are on their own page, <a href="architecture.html">Architecture</a>.</p>
+  </section>
+
+
+  <section aria-labelledby="refs-h">
+    <h2 id="refs-h">References</h2>
+    <p class="note" id="refs-intro"></p>
+    <div id="refs"></div>
+  </section>
+
+  <section aria-labelledby="unsourced-h">
+    <h2 id="unsourced-h">Working assumptions without a source</h2>
+    <p class="note">These settings have no published source. They are stated here so nobody mistakes them for sourced values.</p>
+    <ul class="ref-list unsourced" id="unsourced"></ul>
+  </section>
+</main>
+
+<script src="references.js"></script>
+<script src="credits.js"></script>
+<script src="polish.js"></script>
+</body>
+</html>

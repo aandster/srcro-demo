@@ -7,7 +7,6 @@
 
   var DIESEL = "#D55E00", ELECTRIC = "#0072B2", ROAD = "#B9C0C8", INK = "#15181C";
   var ARMS = ["distance", "emissions"];
-  var PLAY_MS = 1400;
 
   var LAYERS = window.SRCRO_LAYERS;
   var seedIndex = window.SRCRO_SEED_INDEX || [];
@@ -33,8 +32,10 @@
   // ---------------------------------------------------------------- maps
 
   function makeMap(arm) {
-    var m = L.map("map-" + arm, { preferCanvas: true, zoomSnap: 0.25, attributionControl: true });
+    // No zoom on the scroll wheel, so scrolling the page never gets caught by a map (Jordan, 2026-11-01).
+    var m = L.map("map-" + arm, { preferCanvas: true, zoomSnap: 0.25, attributionControl: true, scrollWheelZoom: false });
     m.attributionControl.setPrefix(false);
+    backgroundControl().addTo(m);
     var base = L.layerGroup().addTo(m);
     var d = LAYERS;
     (d.basemap || []).forEach(function (r) {
@@ -63,14 +64,20 @@
       });
     }
     var b = L.latLngBounds(pts);
-    ARMS.forEach(function (a) { maps[a].fitBounds(b, { padding: [10, 10] }); });
+    // Only a map with a size. With one map chosen (Jordan's map view, 2026-11-01) the other is hidden,
+    // and fitting a zero-size map jumps to the highest zoom, which the pan sync then copied onto the
+    // visible map: a blank map with only the depot, "+" greyed out (iPhone, 2026-11-02).
+    // invalidateSize first: a map that has just reappeared still holds its hidden size of 0 by 0 until
+    // told, and a fit at that size gives an infinite zoom (the same blank map, found switching back to Both).
+    ARMS.forEach(function (a) { if (mapSized(a)) { maps[a].invalidateSize(false); maps[a].fitBounds(b, { padding: [10, 10] }); } });
   }
+  function mapSized(a) { var e = $("map-" + a); return !!e && e.clientWidth > 0 && e.clientHeight > 0; }
 
   function syncMaps() {
     ARMS.forEach(function (a) {
       var other = a === "distance" ? "emissions" : "distance";
       maps[a].on("move", function () {
-        if (syncing) return;
+        if (syncing || !mapSized(a) || !mapSized(other)) return;   // a hidden map neither leads nor follows
         syncing = true;
         maps[other].setView(maps[a].getCenter(), maps[a].getZoom(), { animate: false });
         syncing = false;
@@ -87,6 +94,10 @@
   // of a day every truck sits stacked on the depot (Jordan, 2026-11-01).
   var anim = { t: 1, raf: null, routes: [], t0: 18000, t1: 18000, dots: false };
   var TRUCK_CAPACITY_M3 = 11;   // medium rigid rear-loader body, docs/FLEET.md
+  function bodyM3() {
+    var lp = state.data && state.data.liveParams;
+    return TRUCK_CAPACITY_M3 * (lp && lp.compaction ? lp.compaction : 1);
+  }
   var FALLBACK_KMH = 30;   // only for an export without planned times
 
   function hhmm(sec) {
@@ -97,7 +108,7 @@
   // Each route becomes a list of anchors (clock time, metres along the road geometry). A truck
   // drives between two stops at an even pace along the geometry, standing still for each
   // stop's service time, so the planned arrival and departure times are met exactly.
-  function buildRouteAnim(r, colour, g) {
+  function buildRouteAnim(r, colour, g, arm) {
     var cum = [0], i, d = 0;
     for (i = 1; i < r.path.length; i++) {
       d += L.latLng(r.path[i - 1]).distanceTo(L.latLng(r.path[i]));
@@ -134,12 +145,14 @@
       });
       anchors.push({ t: t + (cum[cum.length - 1] - last) * perM, d: cum[cum.length - 1] });
     }
+    var trailCase = L.polyline([], { color: "#FFFFFF", weight: 7, opacity: 0.85, interactive: false }).addTo(g);
     var trail = L.polyline([], { color: colour, weight: 4, opacity: 1, interactive: false }).addTo(g);
     var truck = L.marker(r.path[0], { interactive: false, keyboard: false, zIndexOffset: 1000,
       icon: L.divIcon({ className: "truck", iconSize: [24, 24],
         html: '<span style="background:' + colour + '">' + r.vehicle + "</span>" }) }).addTo(g);
     var stops = r.stops.map(function (st, j) { return { leave: anchors[2 * j + 2].t, marker: st.marker, vol: st.vol || 0 }; });
-    return { path: r.path, cum: cum, anchors: anchors, trail: trail, truck: truck, stops: stops, colour: colour,
+    return { path: r.path, cum: cum, anchors: anchors, trail: trail, trailCase: trailCase, truck: truck, stops: stops, colour: colour,
+      arm: arm, co2: r.co2e_kg || 0, km: r.km || 0,
       dot: truck.getElement() && truck.getElement().firstChild };
   }
 
@@ -152,10 +165,22 @@
     return span > 0 ? a[k].d + (a[k + 1].d - a[k].d) * (T - a[k].t) / span : a[k + 1].d;
   }
 
+  // A colour mixed towards black by f (0 leaves it, 1 is black), for the truck load.
+  function shade(hex, f) {
+    var n = parseInt(hex.slice(1), 16), k = 1 - f;
+    var c = [n >> 16, (n >> 8) & 255, n & 255].map(function (v) { return Math.round(v * k); });
+    return "rgb(" + c.join(",") + ")";
+  }
+
   function applyAnim() {
     var T = anim.t0 + anim.t * (anim.t1 - anim.t0);
+    var today = { distance: { co2: 0, vol: 0, km: 0 }, emissions: { co2: 0, vol: 0, km: 0 } };
     anim.routes.forEach(function (ra) {
-      var d = distanceAt(ra, T), k = 0;
+      var d = distanceAt(ra, T), k = 0, total = ra.cum[ra.cum.length - 1];
+      // CO2-e builds up with the distance driven, the route's own figure spread over its length
+      if (today[ra.arm]) today[ra.arm].co2 += total > 0 ? ra.co2 * Math.min(1, d / total) : 0;
+      // and so does the distance, the route's planned km (not the drawn line's length) spread the same way
+      if (today[ra.arm]) today[ra.arm].km += total > 0 ? ra.km * Math.min(1, d / total) : 0;
       while (k < ra.cum.length - 1 && ra.cum[k + 1] <= d) k++;
       var pts = ra.path.slice(0, k + 1), pos = ra.path[k];
       if (k < ra.path.length - 1 && ra.cum[k + 1] > ra.cum[k]) {
@@ -164,41 +189,148 @@
         pts.push(pos);
       }
       ra.trail.setLatLngs(pts);
+      ra.trailCase.setLatLngs(pts);
+      // While the clock runs only the road already driven shows, the route ahead is hidden
+      // (Jordan, 2026-11-01). Paused at the end of a day, every route shows whole.
+      if (ra.plan) ra.plan.forEach(function (pl) { pl[0].setStyle({ opacity: anim.dots ? 0 : pl[1] }); });
       ra.truck.setLatLng(pos);
-      ra.truck.setOpacity(anim.dots ? 1 : 0);
+      // A truck that has finished its route is back at the depot, so it is hidden (Jordan, 2026-11-01).
+      var home = T >= ra.anchors[ra.anchors.length - 1].t;
+      ra.truck.setOpacity(anim.dots && !home ? 1 : 0);
       var load = 0;
       ra.stops.forEach(function (st) {
         var done = T >= st.leave;
         if (done) load += st.vol;
-        st.marker.setStyle({ fillColor: done ? ra.colour : "#FFFFFF", fillOpacity: done ? 1 : 0.35 });
+        st.marker.setStyle({ fillColor: done ? ra.colour : "#15181C", fillOpacity: done ? 1 : 0.6 });
       });
-      // The truck dot grows with what it has picked up, to full size at the 11 m3 body.
-      if (ra.dot) ra.dot.style.transform = "scale(" + (0.8 + 1.0 * Math.min(1, load / TRUCK_CAPACITY_M3)).toFixed(2) + ")";
+      // The truck darkens with what it has picked up, from its own colour when empty to a deep shade
+      // at the full body (Jordan, 2026-11-01, in place of growing). A live run with compaction holds
+      // more, so its full body is 11 m3 times the compaction the visitor chose.
+      if (ra.dot) ra.dot.style.background = shade(ra.colour, 0.65 * Math.min(1, load / bodyM3()));
+      if (today[ra.arm]) today[ra.arm].vol += load;
     });
-    $("anim").value = String(Math.round(anim.t * 100));
-    $("anim-label").textContent = hhmm(T);
+    showTotals(today);
   }
 
-  function stopAnim() {
-    if (anim.raf) cancelAnimationFrame(anim.raf);
-    anim.raf = null;
-    $("anim-play").textContent = "Animate day";
+  // ---- one run clock (Jordan, 2026-11-01). Play moves the trucks through a day on their planned
+  // times, holds the finished day for a moment, then starts the next day, to the last one. One slider
+  // spans the whole run, 101 steps a day (start to end of day), so dragging it moves through the days
+  // and through the hours. It replaces the separate day replay and day animation.
+  var run = { raf: null, hold: null, speed: 1 };
+  // A day takes 12 s at 1x. The speed button steps through 1x to 4x (Jordan, 2026-11-01).
+  var DAY_MS = 12000, SPEEDS = [1, 2, 3, 4], HOLD_MS = 1200, STEPS = 101;
+  // 0 before a fleet is chosen (the first scenario load pauses before it sets the fleet).
+  function runDays() {
+    var f = state.data && state.data.fleets[state.fleet];
+    return f ? f.distance.days.length : 0;
+  }
+  function playing() { return !!(run.raf || run.hold); }
+  // Trucks show while the run plays and part way through a day. At the end of a day they all sit on
+  // the depot, so the finished day is shown as routes only (Jordan, 2026-11-01).
+  function dotsFor(t) { return playing() || (t > 0 && t < 1); }
+
+  // ---- running totals (Jordan, 2026-11-01). Emissions so far and volume collected so far for both plans,
+  // growing as the run plays: every finished day before this one, plus the part of today driven or
+  // collected by the clock's time. Bars are scaled to the larger plan's total over the whole run.
+  var totalsCache = { key: null };
+  function runTotals() {
+    var key = state.key + "|" + state.fleet;
+    if (totalsCache.key === key) return totalsCache;
+    var lvl = state.data.fleets[state.fleet], out = { key: key };
+    ARMS.forEach(function (a) {
+      var vol = [0], km = [0];   // volume collected and km driven before each day
+      lvl[a].days.forEach(function (d) {
+        var v = 0;
+        (d.routes || []).forEach(function (r) { r.stops.forEach(function (st) { v += st.vol || 0; }); });
+        vol.push(vol[vol.length - 1] + v);
+        km.push(km[km.length - 1] + (d.km || 0));
+      });
+      out[a] = { vol: vol, km: km, co2End: lvl[a].days.length ? lvl[a].days[lvl[a].days.length - 1].co2e_running_kg : 0 };
+    });
+    out.maxCo2 = Math.max(out.distance.co2End, out.emissions.co2End) || 1;
+    out.maxVol = Math.max(out.distance.vol[out.distance.vol.length - 1], out.emissions.vol[out.emissions.vol.length - 1]) || 1;
+    out.maxKm = Math.max(out.distance.km[out.distance.km.length - 1], out.emissions.km[out.emissions.km.length - 1]) || 1;
+    totalsCache = out;
+    return out;
+  }
+  function showTotals(today) {
+    if (!$("totals") || !runDays()) return;   // nothing to total before a fleet is chosen
+    var tt = runTotals(), lvl = state.data.fleets[state.fleet];
+    ARMS.forEach(function (a) {
+      var before = state.day > 0 ? lvl[a].days[state.day - 1].co2e_running_kg : 0;
+      var co2 = before + today[a].co2, vol = tt[a].vol[state.day] + today[a].vol;
+      $("tot-co2-" + a).textContent = fmt(co2, 0) + " kg";
+      $("tot-vol-" + a).textContent = fmt(vol, 0) + " m3";
+      $("bar-co2-" + a).style.width = (100 * co2 / tt.maxCo2).toFixed(1) + "%";
+      $("bar-vol-" + a).style.width = (100 * vol / tt.maxVol).toFixed(1) + "%";
+      // Distance travelled (Jordan, 2026-11-02), beside CO2-e, so the run shows the emissions-aware plan
+      // driving more km for less CO2-e when electric trucks take the longer routes.
+      if ($("tot-km-" + a)) {
+        var km = tt[a].km[state.day] + today[a].km;
+        $("tot-km-" + a).textContent = fmt(km, 0) + " km";
+        $("bar-km-" + a).style.width = (100 * km / tt.maxKm).toFixed(1) + "%";
+      }
+    });
   }
 
-  function playAnim() {
-    if (anim.t >= 1) anim.t = 0;
-    anim.dots = true;
-    $("anim-play").textContent = "Pause";
-    var DURATION_MS = 20000, last = null;
+  function syncRun() {
+    var n = runDays();
+    if (!n) return;
+    var T = anim.t0 + anim.t * (anim.t1 - anim.t0);
+    $("run").max = String(n * STEPS - 1);
+    var ticks = $("run-ticks");
+    if (ticks && ticks.getAttribute("data-n") !== String(n)) {
+      ticks.setAttribute("data-n", String(n));
+      var html = "";
+      for (var i = 0; i < n; i++) {
+        var lab = (i === 0 || (i + 1) % 5 === 0) ? "<span>" + (i + 1) + "</span>" : "";
+        html += '<i style="left:' + (100 * i * STEPS / (n * STEPS - 1)).toFixed(2) + '%">' + lab + "</i>";
+      }
+      ticks.innerHTML = html;
+    }
+    $("run").value = String(state.day * STEPS + Math.round(anim.t * (STEPS - 1)));
+    var when = anim.t >= 1 ? (run.hold ? "day complete" : "end of day") : anim.t <= 0 ? "start of day" : hhmm(T);
+    $("run-label").textContent = "Day " + (state.day + 1) + " / " + n + "  \u00b7  " + when;
+  }
+
+  function showDay(day, t) {
+    state.day = day; anim.t = t; anim.dots = dotsFor(t);
+    drawDay(); updatePanels(); syncRun();
+  }
+
+  function pause() {
+    if (run.raf) cancelAnimationFrame(run.raf);
+    if (run.hold) clearTimeout(run.hold);
+    run.raf = run.hold = null;
+    $("play").setAttribute("aria-label", "Play"); $("play").setAttribute("aria-pressed", "false");
+    anim.dots = dotsFor(anim.t); applyAnim(); syncRun();
+  }
+
+  function playRun() {
+    var n = runDays();
+    if (state.day >= n - 1 && anim.t >= 1) showDay(0, 0);          // run complete, start again
+    else if (anim.t >= 1) showDay(state.day + 1, 0);              // a finished day, go on to the next
+    $("play").setAttribute("aria-label", "Pause"); $("play").setAttribute("aria-pressed", "true");
+    var last = null;
     function frame(now) {
       if (last === null) last = now;
-      anim.t = Math.min(1, anim.t + (now - last) / DURATION_MS);
-      last = now;
-      applyAnim();
-      if (anim.t >= 1) { stopAnim(); return; }
-      anim.raf = requestAnimationFrame(frame);
+      anim.t = Math.min(1, anim.t + (now - last) / (DAY_MS / run.speed));
+      last = now; anim.dots = true; applyAnim();
+      if (anim.t < 1) { run.raf = requestAnimationFrame(frame); syncRun(); return; }
+      run.raf = null;
+      run.hold = setTimeout(function () {
+        run.hold = null;
+        if (state.day >= runDays() - 1) {
+          pause();
+          $("run-label").textContent = "Run complete, " + runDays() + " days";
+          return;
+        }
+        showDay(state.day + 1, 0);
+        last = null; run.raf = requestAnimationFrame(frame);
+      }, HOLD_MS);
+      syncRun();
     }
-    anim.raf = requestAnimationFrame(frame);
+    run.raf = requestAnimationFrame(frame);
   }
 
   function drawDay() {
@@ -214,20 +346,24 @@
         // A white casing under each route keeps it readable over the road layer and
         // street tiles. The full route stays faint underneath the trail, so the plan is
         // visible while the truck is part way along it.
-        L.polyline(r.path, { color: "#FFFFFF", weight: 7, opacity: 0.85, interactive: false }).addTo(g);
-        L.polyline(r.path, { color: colour, weight: 4, opacity: 0.35 })
+        var planCase = L.polyline(r.path, { color: "#FFFFFF", weight: 7, opacity: 0.85, interactive: false }).addTo(g);
+        var planLine = L.polyline(r.path, { color: colour, weight: 4, opacity: 0.35 })
           .bindTooltip("Truck " + r.vehicle + (r.trip > 1 ? ", trip " + r.trip : "") + ", " +
             (r.kind === "electric" ? "electric" : "diesel") + ", " + fmt(r.km, 1) + " km, " +
             fmt(r.co2e_kg, 1) + " kg CO2-e, " + r.stops.length + " stops", { sticky: true })
           .addTo(g);
         r.stops.forEach(function (st) {
-          st.marker = L.circleMarker([st.lat, st.lon], { radius: 5, color: "#FFFFFF", weight: 1.5,
-            fillColor: colour, fillOpacity: 1 })
+          // A scheduled stop is a ring in its truck's colour, filled in once collected, so it reads
+          // apart from the small white dots of today's new requests (Jordan, 2026-11-01).
+          st.marker = L.circleMarker([st.lat, st.lon], { radius: 5.5, color: colour, weight: 2.5,
+            fillColor: "#15181C", fillOpacity: 0.6 })
             .bindTooltip("Request " + st.id + ", " + fmt(st.vol, 1) + " m3, waited " +
               st.age + (st.age === 1 ? " business day" : " business days"))
             .addTo(g);
         });
-        anim.routes.push(buildRouteAnim(r, colour, g));
+        var ra = buildRouteAnim(r, colour, g, arm);
+        ra.plan = [[planCase, 0.85], [planLine, 0.35]];
+        anim.routes.push(ra);
       });
     });
     // One clock for both plans, from the earliest departure to the last truck home.
@@ -238,18 +374,21 @@
     });
     if (!isFinite(anim.t0)) { anim.t0 = 18000; anim.t1 = 18001; }
     applyAnim();
+    requestsView();
   }
 
   // ---------------------------------------------------------------- panels
 
-  function kpiBlock(k) {
+  // The figures under each map are for the day it shows (Jordan, 2026-11-01). They were the
+  // whole run's, which made it hard to tell which numbers moved with the playback bar. The
+  // whole run's figures are in the comparison section's table.
+  function dayBlock(d) {
     var rows = [
-      ["CO2-e per request", fmt(k.co2e_kg_per_request, 2) + " kg"],
-      ["CO2-e, measured days", fmt(k.co2e_kg_total, 0) + " kg"],
-      ["Requests collected", fmt(k.requests_served, 0)],
-      ["Distance", fmt(k.km_total, 0) + " km"],
-      ["Diesel distance", fmt(k.km_diesel, 0) + " km"],
-      ["Electric distance", fmt(k.km_electric, 0) + " km"]
+      ["CO2-e this day", fmt(d.co2e_kg, 1) + " kg"],
+      ["Distance", fmt(d.km, 1) + " km"],
+      ["Collected", fmt(d.collected, 0)],
+      ["New requests", fmt(d.arrivals, 0)],
+      ["Waiting at day end", fmt(d.backlog_end, 0)]
     ];
     return rows.map(function (r) { return "<div><dt>" + r[0] + "</dt><dd>" + r[1] + "</dd></div>"; }).join("");
   }
@@ -259,8 +398,6 @@
   function updatePanels() {
     var lvl = state.data.fleets[state.fleet];
     var kd = lvl.distance.kpis, ke = lvl.emissions.kpis;
-    $("kpi-distance").innerHTML = kpiBlock(kd);
-    $("kpi-emissions").innerHTML = kpiBlock(ke);
     var dKg = ke.co2e_kg_per_request - kd.co2e_kg_per_request;
     var p = pct(ke.co2e_kg_per_request, kd.co2e_kg_per_request);
     var items = [
@@ -274,21 +411,10 @@
       return '<div><div class="v">' + i[0] + '</div><div class="l">' + i[1] + "</div></div>";
     }).join("");
 
-    var dd = lvl.distance.days[state.day], de = lvl.emissions.days[state.day];
-    var rows = [
-      ["Requests arrived", dd.arrivals, de.arrivals, 0],
-      ["Collected this day", dd.collected, de.collected, 0],
-      ["Waiting at day end", dd.backlog_end, de.backlog_end, 0],
-      ["Distance, km", dd.km, de.km, 1],
-      ["CO2-e this day, kg", dd.co2e_kg, de.co2e_kg, 1],
-      ["CO2-e so far, kg", dd.co2e_running_kg, de.co2e_running_kg, 1]
-    ];
-    $("day-table").tBodies[0].innerHTML = rows.map(function (r) {
-      return "<tr><th scope=\"row\">" + r[0] + "</th><td>" + fmt(r[1], r[3]) + "</td><td>" + fmt(r[2], r[3]) + "</td></tr>";
-    }).join("");
+    $("kpi-distance").innerHTML = dayBlock(lvl.distance.days[state.day]);
+    $("kpi-emissions").innerHTML = dayBlock(lvl.emissions.days[state.day]);
     var n = lvl.distance.days.length;
-    $("day-label").textContent = (state.day + 1) + " of " + n;
-    Array.prototype.forEach.call(document.querySelectorAll(".fs-day"), function (e) {
+    Array.prototype.forEach.call(document.querySelectorAll(".fs-day, .day-label"), function (e) {
       e.textContent = "Day " + (state.day + 1) + " of " + n;
     });
     $("run-table").tBodies[0].innerHTML = KPI_ROWS.filter(function (r) {
@@ -301,7 +427,8 @@
     drawFleetBars();
   }
 
-  function render() { stopAnim(); anim.t = 1; anim.dots = false; drawDay(); updatePanels(); }
+  // Keeps the run position, so a fleet change compares both maps at the same moment.
+  function render() { anim.dots = dotsFor(anim.t); drawDay(); updatePanels(); syncRun(); }
 
 
   // ---------------------------------------------------------------- tables and graphs
@@ -372,14 +499,20 @@
     var maxV = niceMax(top), slot = (W - l - r) / keys.length, bw = Math.min(34, slot / 3);
     function Y(v) { return t + (H - t - b) * (1 - v / maxV); }
     var svg = frame(W, H, l, r, t, b, maxV);
+    // A pre-calculated fleet key is the electric trucks of four, so k * 25 is its share. A live run can
+    // have one to six trucks, so its label comes from the counts the visitor chose (liveParams).
+    var lp = state.data.liveParams;
+    function fleetLabel(k) {
+      return lp ? lp.n_electric + " electric, " + lp.n_diesel + " diesel" : (k * 25) + "% electric";
+    }
     keys.forEach(function (k, i) {
       var cx = l + slot * (i + 0.5);
       [["distance", -bw - 2, "ch-bar-dist"], ["emissions", 2, "ch-bar-emis"]].forEach(function (a) {
         var v = state.data.fleets[k][a[0]].kpis.co2e_kg_per_request;
         svg += '<rect class="' + a[2] + '" x="' + (cx + a[1]) + '" y="' + Y(v) + '" width="' + bw + '" height="' + (Y(0) - Y(v)) + '"><title>' +
-          (a[0] === "distance" ? "Distance-only" : "Emissions-aware") + ", " + k + " electric, " + fmt(v, 2) + " kg per request</title></rect>";
+          (a[0] === "distance" ? "Distance-only" : "Emissions-aware") + ", " + fleetLabel(k) + ", " + fmt(v, 2) + " kg per request</title></rect>";
       });
-      svg += '<text class="ch-text' + (k === state.fleet ? " ch-now-label" : "") + '" x="' + cx + '" y="' + (H - 14) + '" text-anchor="middle">' + k + " electric</text>";
+      svg += '<text class="ch-text' + (k === state.fleet ? " ch-now-label" : "") + '" x="' + cx + '" y="' + (H - 14) + '" text-anchor="middle">' + fleetLabel(k) + "</text>";
     });
     $("chart-fleet").innerHTML = svg + legend(l, 8);
   }
@@ -410,7 +543,7 @@
     var sc = document.createElement("script");
     sc.src = "seeds/seed-" + n + ".js";
     sc.onload = function () { done(window.SRCRO_SEEDS[n]); };
-    sc.onerror = function () { $("source-note").hidden = false; $("source-note").textContent = "Could not load seed " + n + ". Check the connection and pick it again."; $("plan").disabled = false; };
+    sc.onerror = function () { document.body.classList.remove("is-loading"); $("source-note").hidden = false; $("source-note").className = "source-note source-warn"; $("source-note").textContent = "Could not load seed " + n + ". Check the connection and pick it again."; $("plan").disabled = false; };
     document.head.appendChild(sc);
   }
 
@@ -420,9 +553,17 @@
     if (!pl) return;
     if (pl.kind === "live") return useData(pl.data, "live", pl.key);
     $("plan").disabled = true;
+    // A scenario file is about 3 MB, so on a phone the wait is long enough to look like a frozen page.
+    // The note becomes a highlighted banner with a spinner and the old figures dim until the new ones
+    // arrive (Jordan, 2026-11-02).
     $("source-note").hidden = false;
-    $("source-note").textContent = "Loading seed " + pl.seed + ".";
-    loadSeed(pl.seed, function (d) { $("plan").disabled = false; useData(d, "seed", pl.key); });
+    $("source-note").className = "source-note source-loading";
+    $("source-note").textContent = "Loading scenario " + pl.seed + ", one moment";
+    document.body.classList.add("is-loading");
+    loadSeed(pl.seed, function (d) {
+      document.body.classList.remove("is-loading");
+      $("plan").disabled = false; useData(d, "seed", pl.key);
+    });
   }
 
   // ---------------------------------------------------------------- all scenarios
@@ -451,11 +592,20 @@
       return '<div><div class="v">' + i[0] + '</div><div class="l">' + i[1] + "</div></div>";
     }).join("");
 
-    var W = 560, H = 260, l = 52, r = 16, t = 34, b = 34;
+    // Drawn at the card's own width so it fills the page, and against the distance-only plan's CO2-e per
+    // request, how emission-heavy each scenario was to begin with, instead of the seed number, which
+    // carries no meaning (Jordan, 2026-11-02). Text stays at its real size because the view box is the
+    // drawn size.
+    var svgEl = $("chart-seeds"), box = svgEl.parentNode.getBoundingClientRect();
+    var W = Math.max(320, Math.round(box.width) || 560), H = W < 600 ? 260 : 320, l = 70, r = 16, t = 16, b = 52;
+    svgEl.setAttribute("viewBox", "0 0 " + W + " " + H);
     var lo = Math.min(0, pcts[0] || 0), hi = Math.max(0, pcts[pcts.length - 1] || 0);
     var span = Math.max(1, hi - lo);
-    var n = seedIndex.length;
-    function X(i) { return l + (W - l - r) * (i + 0.5) / n; }
+    var ds = ok.map(function (rw) { return rw.c.d; });
+    if (!ds.length) ds = [0, 1];   // all electric: no change to plot, so just the axes
+    var xlo = Math.min.apply(null, ds), xhi = Math.max.apply(null, ds), pad = Math.max(0.02, (xhi - xlo) * 0.05);
+    xlo -= pad; xhi += pad;
+    function X(v) { return l + (W - l - r) * (v - xlo) / (xhi - xlo); }
     function Y(v) { return t + (H - t - b) * (1 - (v - lo) / span); }
     var svg = "";
     for (var q = 0; q <= 4; q++) {
@@ -463,15 +613,21 @@
       svg += '<line class="ch-axis" x1="' + l + '" x2="' + (W - r) + '" y1="' + y + '" y2="' + y + '"/>' +
         '<text class="ch-text" x="' + (l - 6) + '" y="' + (y + 4) + '" text-anchor="end">' + String(+v.toFixed(0)) + "%</text>";
     }
+    var xt = W < 600 ? 3 : 5;
+    for (var k = 0; k <= xt; k++) {
+      var xv = xlo + (xhi - xlo) * k / xt;
+      svg += '<text class="ch-text" x="' + X(xv) + '" y="' + (H - b + 18) + '" text-anchor="' + (k === 0 ? "start" : k === xt ? "end" : "middle") + '">' + fmt(xv, 2) + "</text>";
+    }
+    svg += '<text class="ch-text" x="' + (l + (W - l - r) / 2) + '" y="' + (H - 8) + '" text-anchor="middle">Distance-only plan, kg CO2-e per request</text>';
+    // The y axis says what it is, so the caption above only says one point per seed (Jordan, 2026-11-02).
+    var ym = t + (H - t - b) / 2;
+    svg += '<text class="ch-text" x="14" y="' + ym + '" text-anchor="middle" transform="rotate(-90 14 ' + ym + ')">Change in CO2-e per request</text>';
     svg += '<line class="ch-now" x1="' + l + '" x2="' + (W - r) + '" y1="' + Y(0) + '" y2="' + Y(0) + '"/>';
-    rows.forEach(function (rw, i) {
-      if (!rw.c) return;
-      var cur = state.key === "seed:" + rw.seed;
-      svg += '<circle cx="' + X(i) + '" cy="' + Y(rw.c.pct) + '" r="' + (cur ? 6 : 3.5) + '" class="' + (cur ? "ch-dot-now" : "ch-dot") +
-        '" data-seed="' + rw.seed + '"><title>Seed ' + rw.seed + ", " + signed(rw.c.pct, 1) + "%</title></circle>";
+    ok.slice().sort(function (a, c) { return (state.key === "seed:" + a.seed) - (state.key === "seed:" + c.seed); }).forEach(function (rw) {
+      var cur = state.key === "seed:" + rw.seed;   // drawn last, so the chosen seed sits on top
+      svg += '<circle cx="' + X(rw.c.d) + '" cy="' + Y(rw.c.pct) + '" r="' + (cur ? 6 : 4) + '" class="' + (cur ? "ch-dot-now" : "ch-dot") +
+        '" data-seed="' + rw.seed + '"><title>Seed ' + rw.seed + ", distance-only " + fmt(rw.c.d, 2) + " kg per request, change " + signed(rw.c.pct, 1) + "%</title></circle>";
     });
-    svg += '<text class="ch-text" x="' + l + '" y="' + (H - 14) + '">Seed ' + seedIndex[0].seed + '</text><text class="ch-text" x="' + (W - r) +
-      '" y="' + (H - 14) + '" text-anchor="end">Seed ' + seedIndex[n - 1].seed + "</text>";
     $("chart-seeds").innerHTML = svg;
 
     $("seed-table").tBodies[0].innerHTML = rows.map(function (rw) {
@@ -492,8 +648,8 @@
   var raw = { cache: {}, plan: null };
   var RAW_PREVIEW_CHARS = 60000;
 
-  function rawSource() {
-    var arm = (document.querySelector('input[name="rawarm"]:checked') || {}).value || "distance";
+  function rawSource(armOverride) {
+    var arm = armOverride || (document.querySelector('input[name="rawarm"]:checked') || {}).value || "distance";
     var pl = allPlans().filter(function (p) { return p.key === state.key; })[0];
     if (!pl) return null;
     if (pl.kind === "live") {
@@ -525,6 +681,77 @@
       raw.cache = {}; raw.cache[src.url] = sol;   // one file at a time, they are about 1 MB
       $("raw-status").textContent = "";
       return { src: src, sol: sol };
+    });
+  }
+
+  // ---- requests arriving and the day each is assigned (Jordan, 2026-11-01). From each plan's own
+  // solution.json: today's arrivals as small white dots on that plan's map, and a panel with the day's
+  // re-plan figures, how far ahead today's requests were booked and the requests themselves.
+  var reqCache = {}, reqToken = 0;
+  function loadSolution(arm) {
+    var src = rawSource(arm);
+    if (!src) return Promise.reject(new Error("no files for this run"));
+    if (reqCache[src.url]) return Promise.resolve(reqCache[src.url]);
+    return fetch(src.url, { headers: src.headers || {} }).then(function (r) {
+      if (!r.ok) throw new Error("the file is not available (" + r.status + ")");
+      return src.gz ? r.arrayBuffer().then(gunzipText) : r.text();
+    }).then(function (text) {
+      var j = JSON.parse(text), byId = {};
+      (j.collected || []).forEach(function (c) { byId[c.id] = c; });
+      var keys = Object.keys(reqCache);
+      if (keys.length >= 4) delete reqCache[keys[0]];   // a few files of about 1 MB each
+      reqCache[src.url] = { j: j, byId: byId };
+      return reqCache[src.url];
+    });
+  }
+
+  function requestsView() {
+    if (!$("requests") || !state.data) return;
+    var token = ++reqToken, lvl = state.data.fleets[state.fleet];
+    ARMS.forEach(function (arm) {
+      var dayRec = lvl[arm].days[state.day];
+      if (!dayRec) return;
+      var simDay = dayRec.day, box = $("req-" + arm);
+      // solution.json counts days from the first warm-up day, the playback bar from the first measured
+      // day, so table and tooltip days are shifted onto the bar's numbering to match "Day N of M".
+      var shown = function (d) { return d - simDay + state.day + 1; };
+      loadSolution(arm).then(function (s) {
+        if (token !== reqToken) return;   // the day or scenario moved on while the file loaded
+        var today = (s.j.arrivals || []).filter(function (a) { return a.arrival_day === simDay; });
+        var daily = (s.j.daily || []).filter(function (d) { return d.day === simDay; })[0] || {};
+        var hist = {}, notYet = 0;
+        today.forEach(function (a) {
+          var c = s.byId[a.id];
+          if (!c || c.advised_day === undefined) { notYet++; } else { var k = c.advised_day - simDay; hist[k] = (hist[k] || 0) + 1; }
+          // Today's new requests are small white dots with a dark edge, readable on every base map.
+          L.circleMarker([a.lat, a.lon], { radius: 3.5, color: "#15181C", weight: 1.5,
+            fillColor: "#FFFFFF", fillOpacity: 1 })
+            .bindTooltip("New request " + a.id + ", " + fmt(a.volume_m3, 1) + " m3, arrived today. " +
+              (c && c.advised_day !== undefined ? "Advised for day " + shown(c.advised_day) + " (" + (c.advised_day - simDay) + " business days ahead), collected on day " + shown(c.collected_day) + "." : "Not collected within this run."))
+            .addTo(layers[arm]);
+        });
+        var maxH = 1; Object.keys(hist).forEach(function (k) { maxH = Math.max(maxH, hist[k]); });
+        var bars = "";
+        for (var k = 1; k <= 7; k++) {
+          var n = hist[k] || 0;
+          bars += '<div class="req-bar"><span style="height:' + (100 * n / maxH).toFixed(0) + '%"></span><b>' + n + "</b><i>+" + k + "</i></div>";
+        }
+        var later = Object.keys(hist).filter(function (k) { return +k > 7; }).reduce(function (m, k) { return m + hist[k]; }, 0);
+        box.querySelector(".req-figs").innerHTML = [
+          // Arrived, collected and waiting are already under the map, so only what is new here.
+          [daily.planned_later, "planned for later days"], [fmt((daily.solver_ms || 0) / 1000, 1) + " s", "re-plan solve time"]
+        ].map(function (f) { return '<div><div class="v">' + (f[0] === undefined ? "n/a" : f[0]) + '</div><div class="l">' + f[1] + "</div></div>"; }).join("");
+        box.querySelector(".req-hist").innerHTML = bars;
+        box.querySelector(".req-hist-note").textContent = "Business days from arrival to the advised day" +
+          (later ? ", " + later + " more than 7 ahead" : "") + (notYet ? ", " + notYet + " not collected within the run" : "") + ".";
+        box.querySelector("tbody").innerHTML = today.map(function (a) {
+          var c = s.byId[a.id];
+          return "<tr><th scope=\"row\">" + a.id + "</th><td>" + fmt(a.volume_m3, 1) + "</td><td>" +
+            (c && c.advised_day !== undefined ? shown(c.advised_day) + " (+" + (c.advised_day - simDay) + ")" : "n/a") + "</td><td>" +
+            (c ? shown(c.collected_day) : "not in run") + "</td><td>" + (c ? c.age_bdays : "n/a") + "</td></tr>";
+        }).join("");
+        $("requests-note").textContent = "";
+      }).catch(function (e) { if (token === reqToken) $("requests-note").textContent = "Request detail is not available for this run: " + e.message + "."; });
     });
   }
 
@@ -569,7 +796,21 @@
         $("raw-table-cap").textContent = "First " + rows.length + (kind === "in" ? " requests that arrived" : " requests collected");
         wrap.hidden = false;
       } else { wrap.hidden = true; }
-      view.textContent = pretty(obj, false);
+      // The file shows in full height, with no scroll area of its own, so long files open at their
+      // first lines with a button for the rest (Jordan, 2026-11-01).
+      var lines = pretty(obj, false).split("\n"), PREVIEW = 80, more = $("raw-more");
+      if (!more) {
+        more = document.createElement("button");
+        more.id = "raw-more"; more.type = "button"; more.className = "secondary";
+        view.parentNode.insertBefore(more, view.nextSibling);
+      }
+      function fill(all) {
+        view.textContent = all || lines.length <= PREVIEW ? lines.join("\n") : lines.slice(0, PREVIEW).join("\n") + "\n...";
+        more.hidden = lines.length <= PREVIEW;
+        more.textContent = all ? "Show the first " + PREVIEW + " lines" : "Show the whole file (" + lines.length.toLocaleString() + " lines)";
+        more.onclick = function () { fill(!all); if (all) view.scrollIntoView({ block: "start" }); };
+      }
+      fill(false);
       view.hidden = false;
       var gz = $("raw-gz");
       gz.hidden = !res.src.gz; gz.href = res.src.url; gz.setAttribute("download", res.src.name + ".json.gz");
@@ -610,8 +851,22 @@
     btn.setAttribute("aria-pressed", String(on));
     btn.setAttribute("aria-label", (on ? "Exit full screen, " : "Full screen, ") + btn.getAttribute("data-map") + " map");
     document.body.classList.toggle("fs-open", on);
+    movePlayer(wrap, on);
     // The container changes size under Leaflet, so it re-measures once the layout settles.
     setTimeout(function () { ARMS.forEach(function (a) { maps[a].invalidateSize(); }); }, 60);
+  }
+  // The browser's full screen shows only the map, so the playback bar moves into it while it is
+  // open and back to its marker after (Jordan, 2026-11-01). Moving the node keeps every listener.
+  var playerHome = null;
+  function movePlayer(wrap, on) {
+    var bar = document.querySelector(".player");
+    if (!bar) return;
+    if (on) {
+      if (!playerHome) { playerHome = document.createComment("player"); bar.parentNode.insertBefore(playerHome, bar); }
+      wrap.appendChild(bar);
+    } else if (playerHome && bar.parentNode === wrap) {
+      playerHome.parentNode.insertBefore(bar, playerHome);
+    }
   }
   function collapseAll() {
     // Also leave the browser's own full screen, or its fixed layout outlives the overlay class.
@@ -644,8 +899,10 @@
     box.innerHTML = "";
     [0, 1, 2, 3, 4].forEach(function (n) {
       var b = document.createElement("button");
-      b.type = "button"; b.textContent = String(n);
-      b.setAttribute("aria-label", n + " electric trucks of four");
+      b.type = "button"; b.textContent = (n * 25) + "%";
+      b.setAttribute("aria-label", (n * 25) + " percent electric, " + n + " of 4 trucks");
+      b.setAttribute("data-fleet", String(n));
+      b.title = n + " of 4 trucks electric";
       var have = !!(state.data && state.data.fleets[String(n)]);
       b.disabled = !have;
       if (!have) b.title = "Not in this export";
@@ -656,35 +913,17 @@
   }
 
   function setFleet(k) {
+    pause();
     state.fleet = k;
     var n = state.data.fleets[k].distance.days.length;
     state.day = Math.min(state.day, n - 1);
-    $("day").max = String(n); $("day").value = String(state.day + 1);
     Array.prototype.forEach.call($("fleet-buttons").children, function (b) {
-      b.setAttribute("aria-pressed", String(b.textContent === k));
+      b.setAttribute("aria-pressed", String(b.getAttribute("data-fleet") === k));
     });
     syncPlan();
     render();
     $("rawdata").hidden = false;
     rawClear();
-  }
-
-  function stop() {
-    if (state.timer) clearInterval(state.timer);
-    state.timer = null;
-    $("play").textContent = "Play"; $("play").setAttribute("aria-pressed", "false");
-  }
-
-  function play() {
-    stopAnim();
-    var n = state.data.fleets[state.fleet].distance.days.length;
-    if (state.day >= n - 1) state.day = -1;
-    $("play").textContent = "Pause"; $("play").setAttribute("aria-pressed", "true");
-    state.timer = setInterval(function () {
-      if (state.day >= n - 1) { stop(); return; }
-      state.day += 1; $("day").value = String(state.day + 1); render();
-    }, PLAY_MS);
-    state.day += 1; $("day").value = String(state.day + 1); render();
   }
 
   var BASEMAPS = {
@@ -694,7 +933,33 @@
       opacity: 0.9, maxZoom: 19,
       attribution: "Imagery &copy; Esri, Maxar, Earthstar Geographics and the GIS User Community" }
   };
+  // Background switch inside each map (Jordan, 2026-11-01, as on the bus tracker). Both maps change
+  // together, so the two plans are always compared on the same background.
+  var basemapNow = "none";
+  function backgroundControl() {
+    var Ctl = L.Control.extend({
+      options: { position: "bottomleft" },
+      onAdd: function () {
+        var box = L.DomUtil.create("div", "map-bg");
+        box.setAttribute("role", "group"); box.setAttribute("aria-label", "Map background");
+        [["none", "Plain"], ["street", "Street"], ["satellite", "Satellite"]].forEach(function (o) {
+          var b = L.DomUtil.create("button", "", box);
+          b.type = "button"; b.textContent = o[1]; b.setAttribute("data-bg", o[0]);
+          b.setAttribute("aria-pressed", String(o[0] === basemapNow));
+          L.DomEvent.on(b, "click", function (e) { L.DomEvent.stop(e); setBasemap(o[0]); });
+        });
+        L.DomEvent.disableClickPropagation(box); L.DomEvent.disableScrollPropagation(box);
+        return box;
+      }
+    });
+    return new Ctl();
+  }
+
   function setBasemap(mode) {
+    basemapNow = mode;
+    Array.prototype.forEach.call(document.querySelectorAll(".map-bg button"), function (b) {
+      b.setAttribute("aria-pressed", String(b.getAttribute("data-bg") === mode));
+    });
     ARMS.forEach(function (a) {
       Object.keys(BASEMAPS).forEach(function (k) {
         var layer = streetLayers[a + k];
@@ -715,10 +980,11 @@
     var m = data.meta;
     var note = $("source-note");
     note.hidden = false;
+    note.className = "source-note" + (m.test_data ? " source-warn" : "");
     if (m.test_data) {
       note.textContent = "TEST DATA from the unit test fixture. Not a run of the planner.";
     } else if (state.live) {
-      note.textContent = "Showing the live re-plan, scenario " + m.seed + ", " + m.arrivals_per_day +
+      note.textContent = "Showing the live plan, seed " + m.seed + ", " + m.arrivals_per_day +
         " requests a day, " + days(m.measured_days, "measured") + " after " + days(m.warmup_days, "warm-up") + ".";
     } else {
       note.textContent = "Pre-calculated scenario, seed " + m.seed + ", " + m.arrivals_per_day +
@@ -729,8 +995,7 @@
   // mode is "seed" for a pre-calculated scenario or "live" for a visitor's re-plan. Neither
   // carries map layers, the boundary and roads of layers.js stay on the maps.
   function useData(data, mode, key) {
-    stop();
-    stopAnim();
+    pause();
     var live = mode === "live";
     state.data = data;
     state.live = live;
@@ -738,13 +1003,18 @@
     buildFleetButtons();
     var keys = Object.keys(state.data.fleets).sort();
     var k = state.data.fleets[state.fleet] ? state.fleet : (state.data.fleets["1"] ? "1" : keys[0]);
-    state.day = 0;
+    state.day = 0; anim.t = 1;   // a new scenario opens on day 1, drawn whole
     showSource(state.data);
     setFleet(k);
-    $("live-back").hidden = !live;
+    // A finished live run gets a fresh view. On an iPhone (2026-11-02) a live run showed only the depot
+    // square on an empty map, which fits a view zoomed far out that the visitor's touch then kept.
+    if (live && maps.distance) {
+      userMoved = false;
+      setTimeout(function () { ARMS.forEach(function (a) { maps[a].invalidateSize(); }); if (mapsSized()) fitAll(); }, 50);
+    }
   }
 
-  // ---------------------------------------------------------------- live re-plan
+  // ---------------------------------------------------------------- live plan
 
   // Where the live API is. On the laptop it is the same origin. On the hosted page it is the
   // proxy function of scripts/cloud/live_replan/. Visitors type nothing, the presenter starts
@@ -779,141 +1049,472 @@
     return id;
   }
   var VISITOR = visitorId();
+  // This device's re-plan, kept until it finishes (Jordan, 2026-11-02). The server already lets a device
+  // have one run queued or running. Keeping its id means a reload picks the run back up, shows its
+  // progress and keeps Re-plan now greyed until it is done, instead of offering a button that is refused.
+  function myJob(id) {
+    try { if (id) localStorage.setItem("srcro_job", id); else localStorage.removeItem("srcro_job"); } catch (e) { /* this view only */ }
+  }
+  function myJobId() { try { return localStorage.getItem("srcro_job"); } catch (e) { return null; } }
 
   function secs(n) {
     n = Math.round(n);
     return n < 90 ? n + " s" : Math.round(n / 60) + " min";
   }
 
+  // Live Plan page (Jordan, 2026-11-01). The page always shows its content, greyed out with a message
+  // over it while the live server cannot take a re-plan. Other pages keep hiding the live parts.
+  var LIVE_PAGE = document.body.getAttribute("data-page") === "live";
+  var LIVE_OFF = ["The live plan is not available", "The pre-calculated scenarios are on Explore Scenarios."];
+  // Automatic start turned off by the presenter (2026-11-02): the page as it was before auto-wake.
+  var LIVE_OFF_MANUAL = ["The live plan is off", "Ask the presenter at the stand to switch it on. The pre-calculated scenarios are on Explore Scenarios."];
+  function liveGate(on, msg) {
+    if (!LIVE_PAGE) return;
+    document.body.classList.toggle("live-off", !on);
+    var main = document.querySelector("main");
+    if (main) main.inert = !on;   // greyed out also means out of reach for the keyboard and screen readers
+    if (!on && $("live-off-title")) {
+      var m = msg || LIVE_OFF;
+      $("live-off-title").textContent = m[0];
+      $("live-off-detail").textContent = m[1] || "";
+    }
+  }
+
   function liveSetup() {
-    $("live-random").addEventListener("change", function () { $("live-seed").disabled = this.checked; });
-    $("live-back").addEventListener("click", function () { state.fleet = "1"; pickPlan("seed:" + DEFAULT_SEED); $("live-status").textContent = ""; });
+    // A fresh random seed on every page load (Jordan, 2026-11-01), in the server's own random range,
+    // so two visitors rarely run the same scenario but either can type a seed back in to repeat one.
+    function newSeed() { $("live-seed").value = String(1 + Math.floor(Math.random() * 99999)); }
+    newSeed();
+    // Randomise settings (Jordan, 2026-11-01): a random scenario and random choices inside the server's
+    // limits (1 to 6 trucks in all). Measured days are randomised too since 2026-11-02 (Jordan), a 40 day
+    // run takes a few minutes, and the status line names the length picked.
+    // It only fills the form, the visitor still presses Re-plan now.
+    $("live-shuffle").addEventListener("click", function () {
+      function pick(sel) { var o = $(sel).options; $(sel).selectedIndex = Math.floor(Math.random() * o.length); }
+      var ev, diesel;
+      do { ev = Math.floor(Math.random() * 5); diesel = Math.floor(Math.random() * 5); } while (ev + diesel < 1 || ev + diesel > 6);
+      $("live-ev").value = String(ev); $("live-diesel").value = String(diesel);
+      pick("live-compaction"); pick("live-factor"); pick("live-days");
+      // 10 to 50 a day, the rates the project tested, so a random pick rarely meets the time limit.
+      $("live-arrivals").value = String(10 + Math.floor(Math.random() * 41));
+      newSeed();
+      $("live-status").textContent = "Settings randomised: " + ev + " electric and " + diesel + " diesel trucks, " +
+        $("live-compaction").selectedOptions[0].textContent.toLowerCase() + " compaction, " +
+        $("live-factor").selectedOptions[0].textContent.split(",")[0].toLowerCase() + " diesel factor, " +
+        $("live-arrivals").value + " requests a day, " + $("live-days").value + " measured days, seed " + $("live-seed").value + ".";
+    });
     $("live-form").addEventListener("submit", function (ev) {
       ev.preventDefault();
       var body = {
-        seed: $("live-random").checked ? null : parseInt($("live-seed").value, 10),
-        fleet_ev: parseInt($("live-fleet").value, 10),
+        seed: parseInt($("live-seed").value, 10),
+        n_electric: parseInt($("live-ev").value, 10),
+        n_diesel: parseInt($("live-diesel").value, 10),
+        // The server reads n_electric and ignores fleet_ev beside it, but the proxy's LIVE_RUN log line,
+        // which the presenter's statistics count, only has fleet_ev (it showed null before).
+        fleet_ev: parseInt($("live-ev").value, 10),
+        compaction: parseFloat($("live-compaction").value),
+        diesel_factor: $("live-factor").value,
         arrivals_per_day: parseInt($("live-arrivals").value, 10),
         measure_days: parseInt($("live-days").value, 10),
         visitor: VISITOR
       };
+      var trucks = body.n_electric + body.n_diesel;
+      if (trucks < 1 || trucks > 6) { $("live-status").textContent = "Choose between 1 and 6 trucks in total."; return; }
       $("live-go").disabled = true;
-      $("live-status").textContent = "Starting both plans";
+      // Re-plan now always re-plans, also for settings identical to a recent run (Jordan, 2026-11-02,
+      // replacing the same evening's instant answer from the cache). The recent list is how to reopen one.
+      // Asleep or still starting: wake it and send once it is ready (Jordan, 2026-11-02, 10 minute idle stop).
+      if (hosted.control && !hosted.ready) { wakeThenSend(body); return; }
+      sendReplan(body);
+    });
+
+    function sendReplan(body) {
+      $("live-go").disabled = true;
+      $("live-status").textContent = "Sending your settings to the planner";
       liveFetch("/api/replan", { method: "POST", body: JSON.stringify(body) })
-        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, code: r.status, j: j }; }); })
+        .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, code: r.status, j: j || {} }; }); })
         .then(function (res) {
           if (res.code === 401) throw new Error("the live server refused the request (401), ask at the stand");
           if (res.code === 429 || res.code === 503) {
             // A limit, not a fault. The server says which one and when to try again.
             $("live-go").disabled = false;
-            $("live-status").textContent = res.j.error + (res.j.retry_after_s ? " (about " + secs(res.j.retry_after_s) + ")" : "");
+            // The server's own limits reply with error, API Gateway's throttle with message only.
+            $("live-status").textContent = (res.j.error || res.j.message || "The live server is busy, try again in a moment") +
+              (res.j.retry_after_s ? " (about " + secs(res.j.retry_after_s) + ")" : "");
             return null;
           }
           if (!res.ok) throw new Error(res.j.error || "the re-plan could not start");
-          if (res) poll(res.j.id);
+          if (res) { myJob(res.j.id); poll(res.j.id); }
         })
         .catch(function (e) { $("live-go").disabled = false; $("live-status").textContent = "Could not start: " + e.message; });
-    });
+    }
+
+    // POST /wake every 5 s (idempotent, it starts a stopped server and answers 409 while one is still
+    // stopping) until the health route says live, then sends the visitor's settings. Gives up after
+    // 6 minutes, a normal start takes about 2.
+    function wakeThenSend(body) {
+      var t0 = Date.now();
+      hosted.waking = true;
+      $("live-status").textContent = "Starting the live server, under a minute. Your re-plan starts by itself when it is ready.";
+      (function beat() {
+        if (hosted.ready) { hosted.waking = false; sendReplan(body); return; }
+        if (Date.now() - t0 > 6 * 60 * 1000) {
+          hosted.waking = false; $("live-go").disabled = false;
+          $("live-status").textContent = "The live server did not start in time. Press Re-plan now to try again.";
+          return;
+        }
+        fetch(hosted.control + "/wake", { method: "POST", cache: "no-store" })
+          .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { code: r.status, j: j || {} }; }); })
+          .then(function (res) {
+            if (res.code === 403) {
+              hosted.waking = false; $("live-go").disabled = false;
+              $("live-status").textContent = res.j.auto_wake === false ?
+                "The live server is off and automatic start is turned off. Ask the presenter at the stand." :
+                "The live plan has finished. The pre-calculated scenarios are still on Explore Scenarios.";
+              refreshStatus();
+              return;
+            }
+            if (res.j.state === "running") checkReady();
+            setTimeout(beat, 5000);
+          })
+          .catch(function () { setTimeout(beat, 5000); });
+      })();
+    }
 
     var local = location.protocol === "http:" && /^(127\.0\.0\.1|localhost)$/.test(location.hostname);
     if (local) {
       // Served by scripts/demo_server.py on the laptop, task 063's path, unchanged.
       liveFetch("/api/health").then(function (r) { return r.json(); }).then(function (h) {
-        if (!h.live) return;   // routing services are down, the section stays out of sight
+        if (!h.live) { liveGate(false); return; }   // routing services are down, the section stays out of sight
         $("live").hidden = false;
         $("live-form").hidden = false;
-      }).catch(function () { /* no server, the section stays hidden */ });
+        liveGate(true);
+      }).catch(function () { liveGate(false); /* no server, the section stays hidden */ });
       return;
     }
     var cfg = window.SRCRO_LIVE;
-    if (!cfg || !cfg.proxy || !cfg.control) return;   // no web live re-plan configured
+    if (!cfg || !cfg.proxy || !cfg.control) { liveGate(false); return; }   // no web live plan configured
     LIVE.api = cfg.proxy.replace(/\/$/, "");
-    hostedSetup(cfg.control.replace(/\/$/, ""));
+    // Only the Live Plan page shows the server, so only it polls. Explore Scenarios (and its stand
+    // screen, open all day) would otherwise add to API Gateway's 10 requests a second for nothing.
+    if (LIVE_PAGE) hostedSetup(cfg.control.replace(/\/$/, ""));
+    var mine = LIVE_PAGE && myJobId();
+    if (mine) {   // a run this device started before a reload: follow it to the end
+      $("live-go").disabled = true;
+      $("live-status").textContent = "Picking up your re-plan";
+      poll(mine);
+    }
   }
 
   // ---- hosted page: server status, the form opens by itself once the presenter's server is on
 
-  var hosted = { control: "", timer: null };
+  // misses counts status or health polls in a row that got no answer. The account runs at most 10
+  // Lambda calls at once, so a burst of phones can get a 503 now and then (stress_check.py,
+  // 2026-11-01). One miss must not grey out the page, three in a row (about 15 to 45 s) do.
+  var hosted = { control: "", timer: null, misses: 0, ready: false, waking: false, recent: [] };
+  var MISSES_BEFORE_OFF = 3;
 
   function sydneyTime(iso) {
-    return new Date(iso).toLocaleTimeString("en-AU", { timeZone: "Australia/Sydney", hour: "numeric", minute: "2-digit" });
+    // Time only, with the weekday when it is not today, the recent list keeps every run (2026-11-04, was 24 hours).
+    var d = new Date(iso), opts = { timeZone: "Australia/Sydney", hour: "numeric", minute: "2-digit" };
+    var day = function (x) { return x.toLocaleDateString("en-AU", { timeZone: "Australia/Sydney" }); };
+    if (day(d) !== day(new Date())) opts.weekday = "short";
+    return d.toLocaleString("en-AU", opts);
   }
 
   function hostedSetup(control) {
     hosted.control = control;
     $("live").hidden = false;
     $("live-hosted").hidden = false;
+    renderRecent();
     refreshStatus();
     hosted.timer = setInterval(function () { if (!document.hidden) refreshStatus(); }, 15000);
+    // The status box's job progress moves faster than the server state, so health has its own beat.
+    hosted.fast = setInterval(function () { if (!document.hidden && hosted.on) checkReady(); }, 5000);
+    hosted.wakeBeat = setInterval(function () { if (!document.hidden && hosted.waking) refreshStatus(); }, 5000);
+    loadRecent();
+    hosted.recentBeat = setInterval(function () { if (!document.hidden) loadRecent(); }, 60000);
+  }
+
+  // Status box (Jordan, 2026-11-01): shows the server is up, its two routing services answer,
+  // and what the planner is computing right now, from the public part of /api/health.
+  function statusBox(kind, title) {
+    $("sb-dot").className = "sb-dot sb-" + kind;
+    $("sb-state").textContent = title;
+    if (kind !== "on") { showQueue([]); $("sb-run").hidden = true; ["sb-osrm", "sb-vroom"].forEach(function (id) { $(id).className = "sb-check"; }); $("sb-done").textContent = ""; }
+  }
+  // "2 electric and 1 diesel trucks, 25 requests a day, 10 measured days", from a run's public settings.
+  function runWhat(p) {
+    var trucks = [];
+    if (p.n_electric) trucks.push(p.n_electric + " electric");
+    if (p.n_diesel) trucks.push(p.n_diesel + " diesel");
+    return trucks.join(" and ") + (p.n_electric + p.n_diesel === 1 ? " truck, " : " trucks, ") +
+      p.arrivals_per_day + " requests a day, " + p.measure_days + " measured days";
+  }
+  // The re-plans waiting in line, in order (Jordan, 2026-11-02). The server lists their settings only.
+  function showQueue(list) {
+    var ol = $("sb-queue");
+    if (!ol) return;
+    list = list || [];
+    ol.hidden = !list.length;
+    ol.innerHTML = list.map(function (q) { return "<li>" + runWhat(q.params || {}) + "</li>"; }).join("");
+  }
+  function statusHealth(h) {
+    $("sb-osrm").className = "sb-check " + (h.osrm ? "sb-ok" : "sb-bad");
+    $("sb-vroom").className = "sb-check " + (h.vroom ? "sb-ok" : "sb-bad");
+    $("sb-done").textContent = (h.finished || 0) + (h.finished === 1 ? " re-plan" : " re-plans") + " finished since start";
+    showQueue(h.queued);
+    var r = h.running;
+    $("sb-run").hidden = !r;
+    if (!r) return;
+    // Several re-plans can plan at once since 2026-11-02, this line describes the one running longest.
+    var n = h.running_count || 1;
+    $("sb-run-what").textContent = (n > 1 ? n + " at once, the longest: " : "") + runWhat(r.params || {}) + ", " + secs(r.elapsed_s) + " so far";
+    ["distance", "emissions"].forEach(function (arm) {
+      var d = (r.days_done || {})[arm] || 0;
+      $("sb-prog-" + arm).value = r.days_total ? d / r.days_total : 0;
+      $("sb-day-" + arm).textContent = "day " + d + " of " + r.days_total;
+    });
   }
 
   function refreshStatus() {
-    fetch(hosted.control + "/status", { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (s) {
+    fetch(hosted.control + "/status", { cache: "no-store" }).then(function (r) {
+      if (!r.ok) throw new Error("status " + r.status);
+      return r.json();
+    }).then(function (s) {
+      hosted.misses = 0;
       var line;
-      if (s.expired) line = "The live re-plan has ended for this expo. The pre-calculated scenarios above are still here.";
-      else if (s.state === "stopped") line = "The live server is off. Ask at the stand and the presenter will start it.";
-      else if (s.state === "pending") line = "The live server is starting, about two minutes.";
-      else if (s.state === "stopping") line = "The live server is turning off.";
-      else if (s.state === "running") line = "The live server is on until about " + sydneyTime(s.off_at) +
-        " Sydney time, one hour after the last re-plan.";
+      if (s.expired) line = "The live plan has finished for this expo. The pre-calculated scenarios are still available.";
+      else if (s.state === "stopped" && s.auto_wake === false) line = "The live server is off. Ask the presenter at the stand to start it.";
+      else if (s.state === "stopped") line = "The live server is asleep. Press Re-plan now and it starts by itself in under a minute.";
+      else if (s.state === "pending") line = "The live server is starting. This takes under a minute.";
+      else if (s.state === "stopping") line = "The live server is going to sleep. Press Re-plan now and it starts again.";
+      else if (s.state === "running") line = "The live server is on. It sleeps 10 minutes after the last re-plan has finished.";
       else line = "The live server is " + s.state + ".";
       $("live-server").textContent = line;
-      if (s.state === "running") checkReady(); else $("live-form").hidden = true;
-    }).catch(function () { $("live-server").textContent = "Could not reach the live server's status."; });
+      hosted.on = s.state === "running" && !s.expired;
+      if (!hosted.on) hosted.ready = false;
+      if (s.expired) statusBox("off", "Ended");
+      else if (s.state === "running") statusBox("on", "Live");
+      else if (s.state === "pending") statusBox("wait", "Starting");
+      else if (s.state === "stopping") statusBox("wait", "Going to sleep");
+      else statusBox("off", "Asleep");
+      // An expired window can still report running until the scheduled stop, so the form stays shut.
+      if (s.expired) {
+        $("live-form").hidden = true;
+        liveGate(false, ["The live plan has finished", "Thanks for visiting. The pre-calculated scenarios are still on Explore Scenarios."]);
+      } else if (s.state === "running") checkReady();
+      else if (s.auto_wake === false && !hosted.waking) {
+        $("live-form").hidden = true;
+        liveGate(false, s.state === "pending" ? ["Starting up", "This takes under a minute. The page will update automatically when it is ready."] : LIVE_OFF_MANUAL);
+      } else {
+        // Asleep, starting or going to sleep: the form stays open, Re-plan now wakes the server.
+        $("live-form").hidden = false;
+        liveGate(true);
+        $("live-queue").textContent = "";
+      }
+    }).catch(function () {
+      if (++hosted.misses < MISSES_BEFORE_OFF) return;   // keep what the page shows, try again next beat
+      $("live-server").textContent = "The live server is not responding right now.";
+      hosted.on = false; statusBox("off", "Unreachable");
+      liveGate(false, ["Cannot reach the live server", "Check your internet connection, or ask the presenter at the stand."]);
+    });
   }
 
   function checkReady() {
     liveFetch("/api/health").then(function (r) { return r.json().then(function (j) { return { code: r.status, j: j }; }); })
       .then(function (res) {
+        // Throttled, not off: treat as a missed beat. 429 is API Gateway's own throttle.
+        if ((res.code === 503 && !(res.j && res.j.off)) || res.code === 429) {
+          if (++hosted.misses < MISSES_BEFORE_OFF) return;
+        } else hosted.misses = 0;
         if (res.code === 401) {
-          $("live-server").textContent = "Live re-plan is not open yet. Ask at the stand.";
+          $("live-server").textContent = "The live plan is not open yet. Ask the presenter at the stand.";
           $("live-form").hidden = true;
         } else if (res.code !== 200 || !res.j.live) {
-          $("live-form").hidden = true;   // still warming up its routing services
-        } else {
+          hosted.ready = false;
+          if (res.code === 200) { statusBox("wait", "Warming up"); statusHealth(res.j); }
+          // Still warming up its routing services. The form stays open, a re-plan waits for it.
           $("live-form").hidden = false;
-          var q = res.j.waiting ? res.j.waiting + (res.j.waiting === 1 ? " re-plan is" : " re-plans are") + " waiting" +
-            (res.j.busy ? " behind the one running." : ".") : (res.j.busy ? "One re-plan is running, none waiting." : "Nobody is waiting, a re-plan starts at once.");
+          liveGate(true);
+        } else {
+          hosted.ready = true;
+          $("live-form").hidden = false;
+          liveGate(true);
+          statusBox("on", "Live"); statusHealth(res.j);
+          // Short lines (Jordan, 2026-11-02): the list below names what is waiting.
+          var q = res.j.waiting ? res.j.waiting + (res.j.waiting === 1 ? " re-plan is" : " re-plans are") + " waiting." :
+            (res.j.busy ? "One re-plan is running." : "Nobody is waiting.");
           $("live-queue").textContent = q;
         }
       })
-      .catch(function () { $("live-form").hidden = true; });
+      .catch(function () {
+        if (++hosted.misses < MISSES_BEFORE_OFF) return;
+        $("live-form").hidden = true; liveGate(false);
+      });
   }
 
+  // A poll gives up, and gives the button back, when the job is gone (404: the server restarted or
+  // the presenter stopped it), the server says it is off, or about a minute of polls in a row got no
+  // usable answer. Before this it polled forever with Re-plan now greyed out (demo sweep, 2026-11-02).
+  var POLL_GIVE_UP = 30;
   function poll(id) {
     var bar = $("live-progress");
     bar.hidden = false;
+    var misses = 0, over = false;
+    function stop(msg) {
+      over = true;
+      myJob(null);
+      clearInterval(t);
+      bar.hidden = true;
+      $("live-go").disabled = false;
+      if (msg) $("live-status").textContent = msg;
+    }
+    function miss() {
+      if (++misses >= POLL_GIVE_UP) stop("Lost contact with the live server while your re-plan ran. Press Re-plan now to try again.");
+    }
     var t = setInterval(function () {
-      liveFetch("/api/job/" + id).then(function (r) { return r.json(); }).then(function (j) {
-        if (!j.progress) return;   // a dropped or refused request, keep polling
+      liveFetch("/api/job/" + id).then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (j) { return { code: r.status, j: j || {} }; });
+      }).then(function (res) {
+        if (over) return;   // a slow reply that lands after the run was already handled
+        var j = res.j;
+        if (res.code === 404) { stop("The live server no longer has your re-plan, it may have restarted. Press Re-plan now to try again."); return; }
+        if (j.off) { stop("The live server was switched off before your re-plan finished."); return; }
+        if (!j.progress) { miss(); return; }   // a dropped or throttled request, keep polling for a while
+        misses = 0;
         bar.value = j.progress.fraction;
         var d = j.progress.days_done, q = j.queue || {};
+        // Clearer lines (Jordan, 2026-11-02). Days are counted the way the visitor chose them: the first
+        // days of a run are warm-up days that fill the backlog and are not measured.
         if (j.state === "queued") {
-          $("live-status").textContent = "In the queue, number " + q.position + " of " + q.waiting + " waiting. About " + secs(q.est_wait_s) +
-            " before it starts, then about " + secs(q.est_run_s) + " to run.";
+          var ahead = (q.position || 1) - 1;
+          $("live-status").textContent = (ahead ? "Waiting in line, " + ahead + (ahead === 1 ? " re-plan" : " re-plans") + " ahead of yours. " :
+            "Yours is next. ") + "Starts in about " + secs(q.est_wait_s) + ", then takes about " + secs(q.est_run_s) + ".";
         } else if (j.state === "running") {
-          $("live-status").textContent = "Planning, distance-only day " + d.distance + " of " + j.progress.days_total +
-            ", emissions-aware day " + d.emissions + " of " + j.progress.days_total + ", " + Math.round(j.elapsed_s) + " s";
+          var total = j.progress.days_total, measured = (j.params && j.params.measure_days) || total, warm = total - measured;
+          var slow = Math.min(d.distance, d.emissions);
+          $("live-status").textContent = "Planning your run: " + (slow < warm ? "warming up the backlog, day " + (slow + 1) + " of " + warm :
+            "measured day " + Math.min(measured, slow - warm + 1) + " of " + measured) + ", " + Math.round(j.elapsed_s) + " s so far.";
         }
         if (j.state === "queued" || j.state === "running") return;
-        clearInterval(t);
-        bar.hidden = true;
-        $("live-go").disabled = false;
+        stop();
         if (j.state === "done") {
-          $("live-status").textContent = "Done in " + Math.round(j.elapsed_s) + " s. The maps now show the live run.";
-          var lf = Object.keys(j.result.fleets)[0];
-          var plan = { kind: "live", key: "live:" + livePlans.length, data: j.result, jobId: j.id, label: "Live re-plan, scenario " +
-            j.result.meta.seed + ", " + lf + " of four trucks electric, " + j.result.meta.arrivals_per_day + " requests a day, " +
-            j.result.meta.measured_days + " measured days" };
-          livePlans.push(plan);
-          state.fleet = lf;
-          useData(j.result, "live", plan.key);
-          if (hosted.control) refreshStatus();
+          $("live-status").textContent = "Finished in " + Math.round(j.elapsed_s) + " seconds. The maps below now show your run.";
+          showLiveResult(j, false);
+          if (hosted.control) { refreshStatus(); setTimeout(loadRecent, 8000); }   // the server copies it to the cache meanwhile
         } else {
-          $("live-status").textContent = "The re-plan failed: " + (j.error || "unknown error");
+          $("live-status").textContent = "The re-plan did not finish: " + (j.error || "an unknown error");
         }
-      }).catch(function () { /* keep polling through a dropped request */ });
+      }).catch(function () { if (!over) miss(); });   // keep polling through a dropped request, for a while
     }, hosted.control ? 2000 : 1000);
+  }
+
+  // A finished run on the maps, from the server (cached false) or from the recent re-plans cache, whose
+  // files the server may no longer hold, so a cached run offers no solution downloads.
+  function showLiveResult(j, cached) {
+    var lf = Object.keys(j.result.fleets)[0];
+    var plan = { kind: "live", key: "live:" + livePlans.length, data: j.result, jobId: cached ? null : j.id, label: "Live plan, scenario " +
+      j.result.meta.seed + ", " + (j.params.n_electric !== undefined ? j.params.n_electric + " electric and " + j.params.n_diesel + " diesel" : (lf * 25) + "% electric fleet") + ", " + j.result.meta.arrivals_per_day + " requests a day, " +
+      j.result.meta.measured_days + " measured days" + (cached ? ", from the recent list" : "") };
+    // The result keys its one fleet by electric trucks only, so the counts the visitor chose
+    // travel with it for the chart labels and the truck shading (compacted body size).
+    if (j.params) j.result.liveParams = j.params;
+    livePlans.push(plan);
+    state.fleet = lf;
+    useData(j.result, "live", plan.key);
+  }
+
+  // ---- recent re-plans (Jordan, 2026-11-02, kept indefinitely since 2026-11-04), served by the control function
+  // from what the server copies to S3, so they open while the server sleeps. Everyone's runs, settings only.
+  // The control function sends 50 at a time. hosted.recent is the newest page, hosted.older the pages the
+  // visitor asked for, so the minute-by-minute refresh of the newest does not drop them.
+  var FACTOR_NAMES = { low: "low", central: "central", high: "high", stress: "stress" };
+  function recentLine(r) {
+    var p = r.params || {};
+    return runWhat(p) + ", seed " + p.seed + ", " + (FACTOR_NAMES[p.diesel_factor] || p.diesel_factor) + " diesel factor" +
+      (p.compaction && p.compaction !== 1 ? ", " + p.compaction + " times compaction" : "");
+  }
+  function renderRecent() {
+    var box = $("live-recent"), ul = $("live-recent-list"), more = $("live-recent-more");
+    if (!box || !ul) return;
+    var seen = {}, runs = (hosted.recent || []).concat(hosted.older || []).filter(function (r) {
+      if (seen[r.id]) return false;
+      seen[r.id] = true; return true;
+    });
+    box.hidden = false;   // also while empty, a hidden box looked like a fault (2026-11-04)
+    ul.textContent = "";
+    if (!runs.length) {
+      var none = document.createElement("li");
+      none.className = "recent-what";
+      none.textContent = hosted.recentLoaded ? "No re-plans yet." : hosted.recentFailed ? "The recent re-plans could not be loaded. It tries again every minute." : "Loading the recent re-plans.";
+      ul.appendChild(none);
+    }
+    runs.forEach(function (r) {
+      var li = document.createElement("li"), t = document.createElement("span"), what = document.createElement("span");
+      t.className = "recent-time"; t.textContent = sydneyTime(r.t);
+      what.className = "recent-what"; what.textContent = recentLine(r);
+      li.appendChild(t); li.appendChild(what);
+      if (r.outcome === "timed_out") {
+        var tag = document.createElement("span");
+        tag.className = "recent-time"; tag.textContent = "Timed out after " + Math.round((r.elapsed_s || 0) / 60) + " minutes, no result";
+        li.appendChild(tag);
+      } else {
+        var b = document.createElement("button");
+        b.type = "button"; b.className = "secondary"; b.textContent = "Open";
+        b.addEventListener("click", function () { openRecent(r, "Opened the run from " + sydneyTime(r.t) + ". The maps below now show it."); });
+        li.appendChild(b);
+      }
+      ul.appendChild(li);
+    });
+    if (more) more.hidden = !hosted.recentMore;
+  }
+  function loadRecent() {
+    if (!hosted.control) return;
+    fetch(hosted.control + "/recent?limit=50", { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        if (!j || !j.runs) { hosted.recentFailed = true; renderRecent(); return; }
+        hosted.recent = j.runs; hosted.recentLoaded = true; hosted.recentFailed = false;
+        // Until the visitor has asked for older runs, the end of the list is the newest page's.
+        if (!(hosted.older && hosted.older.length)) { hosted.recentMore = !!j.more; hosted.recentNext = j.next; }
+        renderRecent();
+      })
+      .catch(function () { hosted.recentFailed = true; renderRecent(); /* keeps any list the page already has */ });
+  }
+  function loadOlder() {
+    if (!hosted.control || !hosted.recentNext) return;
+    var btn = $("live-recent-more");
+    btn.disabled = true;
+    fetch(hosted.control + "/recent?limit=50&before=" + encodeURIComponent(hosted.recentNext), { cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        btn.disabled = false;
+        if (!j || !j.runs) return;
+        hosted.older = (hosted.older || []).concat(j.runs);
+        hosted.recentMore = !!j.more; hosted.recentNext = j.next;
+        renderRecent();
+      })
+      .catch(function () { btn.disabled = false; });
+  }
+  if ($("live-recent-more")) $("live-recent-more").addEventListener("click", loadOlder);
+  function openRecent(r, msg) {
+    $("live-status").textContent = "Opening the run from " + sydneyTime(r.t);
+    return fetch(hosted.control + "/recent/" + encodeURIComponent(r.id)).then(function (res) {
+      if (!res.ok) throw new Error(res.status === 404 ? "that run has no result to open" : "status " + res.status);
+      return res.arrayBuffer();
+    }).then(function (buf) {
+      // Served gzip with Content-Encoding, which the browser normally unpacks. If the bytes still start
+      // with the gzip magic number, unpack them here, as the raw data files are.
+      var u = new Uint8Array(buf);
+      if (u[0] === 0x1f && u[1] === 0x8b && window.DecompressionStream) {
+        return new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream("gzip"))).json();
+      }
+      return JSON.parse(new TextDecoder().decode(u));
+    }).then(function (j) {
+      showLiveResult(j, true);
+      $("live-status").textContent = msg;
+      return true;
+    }).catch(function (e) { $("live-status").textContent = "Could not open that run: " + e.message + "."; loadRecent(); return false; });
   }
 
   // ---------------------------------------------------------------- start
@@ -925,9 +1526,19 @@
   // frame). So the first fit waits until both containers have a real size. Leaflet queues the
   // layers until a view exists. Later resizes keep the visitor's own pan and zoom.
   function mapsSized() {
-    return ARMS.every(function (a) { var e = $("map-" + a); return e.clientWidth > 0 && e.clientHeight > 0; });
+    return ARMS.some(mapSized);   // at least one map to fit, fitAll skips a hidden one
   }
   makeMap("distance"); makeMap("emissions");
+  // A view more than 3 zoom levels further out than the city's own fit shows nothing useful (the
+  // whole city under the depot marker), so a resize refits it even after the visitor moved the map.
+  function zoomedAway() {
+    var shown = ARMS.filter(mapSized)[0];
+    if (!shown) return false;
+    var m = maps[shown], pts = [LAYERS.depot];
+    (LAYERS.boundary || []).forEach(function (r) { pts = pts.concat(r); });
+    if (pts.length < 3) return false;
+    return m.getZoom() < m.getBoundsZoom(L.latLngBounds(pts)) - 3;
+  }
   // The first fit can happen at a size the pane later leaves, so until the visitor pans or
   // zooms a resize refits the view, after that their own view is kept.
   var userMoved = false;
@@ -940,22 +1551,66 @@
   if (wasSized) fitAll();
   syncMaps();
   if (window.ResizeObserver) {
+    var shownBefore = {};
+    ARMS.forEach(function (a) { shownBefore[a] = mapSized(a); });
     var watcher = new ResizeObserver(function () {
       var now = mapsSized();
-      if (now && (!wasSized || !userMoved)) fitAll();
+      // A map that has just appeared takes the view of the one already shown, or a fresh fit.
+      var appeared = ARMS.filter(function (a) { return mapSized(a) && !shownBefore[a]; });
+      ARMS.forEach(function (a) { shownBefore[a] = mapSized(a); });
+      if (now && (!wasSized || !userMoved || zoomedAway())) fitAll();
+      else appeared.forEach(function (a) {
+        var other = maps[a === "distance" ? "emissions" : "distance"];
+        maps[a].invalidateSize();
+        if (mapSized(a === "distance" ? "emissions" : "distance")) maps[a].setView(other.getCenter(), other.getZoom(), { animate: false });
+        else fitAll();
+      });
       wasSized = now;
     });
     ARMS.forEach(function (a) { watcher.observe($("map-" + a)); });
   }
-  $("day").addEventListener("input", function () { stop(); state.day = parseInt(this.value, 10) - 1; render(); });
-  $("play").addEventListener("click", function () { if (state.timer) stop(); else play(); });
-  Array.prototype.forEach.call(document.querySelectorAll('input[name="basemap"]'), function (r) {
-    r.addEventListener("change", function () { if (this.checked) setBasemap(this.value); });
+  $("play").addEventListener("click", function () { if (playing()) pause(); else playRun(); });
+  $("speed").addEventListener("click", function () {
+    run.speed = SPEEDS[(SPEEDS.indexOf(run.speed) + 1) % SPEEDS.length];
+    this.textContent = run.speed + "×";
+    this.setAttribute("aria-label", "Playback speed, " + run.speed + " times");
+    this.setAttribute("aria-pressed", String(run.speed > 1));
+  });
+  $("run").addEventListener("input", function () {
+    var v = parseInt(this.value, 10);   // read before pause(), which moves the slider back to the clock
+    pause();
+    var day = Math.min(runDays() - 1, Math.floor(v / STEPS)), t = (v % STEPS) / (STEPS - 1);
+    if (day !== state.day) showDay(day, t);
+    else { anim.t = t; anim.dots = dotsFor(t); applyAnim(); syncRun(); }
+  });
+  // Which maps show (Jordan, 2026-11-01): both side by side, or one at full width.
+  Array.prototype.forEach.call(document.querySelectorAll('input[name="mapview"]'), function (r) {
+    r.addEventListener("change", function () {
+      if (!this.checked) return;
+      document.querySelector(".maps").setAttribute("data-view", this.value);
+      setTimeout(function () { ARMS.forEach(function (a) { maps[a].invalidateSize(); }); fitAll(); }, 50);
+    });
   });
   setupFullscreen();
+  // The playback bar hides itself while none of the views it drives is on screen: the scenario
+  // controls, the running totals, the maps and the day table and charts (Jordan, 2026-11-01). The top
+  // margin leaves out what sits under the bar itself.
+  if (window.IntersectionObserver && document.querySelector(".player")) {
+    var onScreen = [];
+    var watcherIO = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        var i = onScreen.indexOf(e.target);
+        if (e.isIntersecting && i < 0) onScreen.push(e.target);
+        if (!e.isIntersecting && i >= 0) onScreen.splice(i, 1);
+      });
+      document.querySelector(".player").classList.toggle("player-away", onScreen.length === 0);
+    }, { rootMargin: "-90px 0px 0px 0px" });
+    [".controls", "#totals", ".maps", ".compare", "#requests"].forEach(function (sel) {
+      var el = document.querySelector(sel);
+      if (el) watcherIO.observe(el);
+    });
+  }
   rawSetup();
-  $("anim-play").addEventListener("click", function () { if (anim.raf) stopAnim(); else { stop(); playAnim(); } });
-  $("anim").addEventListener("input", function () { stopAnim(); anim.dots = true; anim.t = parseInt(this.value, 10) / 100; applyAnim(); });
   $("plan").addEventListener("change", function () { pickPlan(); });
   function seedClick(ev) {
     var el = ev.target.closest("[data-seed]");
@@ -963,6 +1618,11 @@
   }
   $("seed-table").addEventListener("click", seedClick);
   $("chart-seeds").addEventListener("click", seedClick);
+  var seedResize = null;   // the seed chart is drawn at the card's width, so it is redrawn when that changes
+  window.addEventListener("resize", function () {
+    clearTimeout(seedResize);
+    seedResize = setTimeout(function () { if (state.data && !$("seeds").hidden) renderSeeds(); }, 200);
+  });
   // The maps and controls are up before any scenario has loaded. Seed 1 loads like any other.
   buildFleetButtons();
   syncPlan();

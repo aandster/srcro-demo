@@ -1,0 +1,44 @@
+/* Charts on the Project Results page (expo, 2026-11-01). Colours reuse the site's variables, the diesel
+   orange and electric blue of the maps and the grey and green of the two plans. */
+:root {
+  --rc-ev: #0072B2; --rc-diesel: #D55E00; --rc-accent: #1C5D86; --rc-grey: #7C8794; --rc-green: #2FA37A;
+  --rc-surface: var(--ground);
+}
+@media (prefers-color-scheme: dark) {
+  :root { --rc-ev: #56B4E9; --rc-diesel: #FF9A52; --rc-accent: #7FB8DE; --rc-grey: #8B96A3; }
+}
+.poster { --rc-surface: var(--panel); }
+.rc-fig { margin: 14px 0 18px; }
+.rc-title { font-size: 15px; font-weight: 700; margin: 0 0 6px; }
+.rc-legend { list-style: none; display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 0 0 8px; padding: 0; font-size: 13px; color: var(--muted); }
+.rc-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.rc-sw { display: inline-block; width: 14px; height: 10px; border-radius: 3px; flex: none; background: currentColor; }
+.rc-sw-dot { width: 10px; border-radius: 50%; }
+.rc-sw-whisker { height: 2px; width: 18px; border-radius: 0; background: var(--ink); }
+.rc-host { width: 100%; }
+.rc-svg { display: block; max-width: 100%; height: auto; }
+.rc-svg text { font-family: inherit; }
+.rc-t { fill: var(--ink); }
+.rc-m { fill: var(--muted); }
+.rc-i { font-style: italic; }
+.rc-sep { stroke: var(--rule); stroke-width: 1; opacity: .7; }
+.rc-grid { stroke: var(--rule); stroke-width: 1; }
+.rc-zero { stroke: var(--muted); stroke-width: 1; }
+.rc-band { fill: var(--rule); opacity: .45; }
+.rc-chev { fill: none; stroke: var(--muted); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.rc-halo { fill: none; stroke: var(--rc-surface); stroke-width: 4; stroke-linecap: round; }
+.rc-whisk { fill: none; stroke: var(--ink); stroke-width: 1.5; stroke-linecap: round; }
+.rc-link { stroke: var(--muted); stroke-width: 2; opacity: .5; }
+.rc-ring { stroke: var(--rc-surface); stroke-width: 2; }
+.rc-s-ev { fill: var(--rc-ev); color: var(--rc-ev); }
+.rc-s-diesel { fill: var(--rc-diesel); color: var(--rc-diesel); }
+.rc-s-accent { fill: var(--rc-accent); color: var(--rc-accent); }
+.rc-s-grey { fill: var(--rc-grey); color: var(--rc-grey); }
+.rc-s-green { fill: var(--rc-green); color: var(--rc-green); }
+path.rc-pale { opacity: .35; }
+.rc-sw.rc-pale { opacity: .35; }
+.rc-cap { margin: 6px 0 0; font-size: 14px; color: var(--muted); }
+.rc-note { display: block; margin-top: 2px; font-size: 13px; }
+@keyframes rc-in { from { opacity: .35; } to { opacity: 1; } }
+.rc-redraw { animation: rc-in .2s ease-out; }
+@media (prefers-reduced-motion: reduce) { .rc-redraw { animation: none; } }

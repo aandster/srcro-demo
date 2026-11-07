@@ -1,0 +1,27 @@
+/* Where the plans differ (Jordan, 2026-11-01). Bars use the truck colours of the maps. No scroll
+   areas, the two plans sit side by side and stack on a phone. */
+.plans-differ { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 14px 16px; margin: 12px 0; }
+.plans-differ [hidden] { display: none !important; }
+/* Plain text since the heading carries the Whole run tag (Jordan, 2026-11-02), so it no longer looks like a second tag. */
+.pd-tag { margin: 0 0 8px; color: var(--muted); font-size: 14px; }
+.pd-def { margin-top: 10px; font-size: 14px; }
+.pd-bars { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 32px; margin: 14px 0 6px; }
+@media (max-width: 760px) { .pd-bars { grid-template-columns: 1fr; } }
+.pd-plan h3 { margin: 0 0 6px; }
+.pd-plan ul { list-style: none; margin: 0; padding: 0; }
+.pd-plan li { display: grid; grid-template-columns: 5.5em minmax(0, 1fr) 4.5em; align-items: center; gap: 8px; min-height: 36px; }
+.pd-name { font-weight: 600; line-height: 1.2; }
+.pd-type { display: block; font-size: 12px; font-weight: 400; color: var(--muted); }
+.pd-track { height: 18px; background: var(--rule); border-radius: 4px; overflow: hidden; }
+.pd-bar { display: block; height: 100%; border-radius: 4px; }
+.pd-dsl { background: var(--diesel); }
+.pd-ev { background: var(--electric); }
+.pd-km { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.pd-total { margin: 6px 0 0; padding-top: 6px; border-top: 1px solid var(--rule); }
+.pd-sentence { margin: 10px 0 0; font-weight: 600; }
+
+/* The Maps shown group is wider than a 390 px phone and widened the whole page. */
+@media (max-width: 560px) { .basemap .seg, .rawarm .seg { flex-wrap: wrap; max-width: 100%; } }
+/* The whole run table has no phone card layout and widened the page. */
+@media (max-width: 560px) { #run-table { table-layout: fixed; } #run-table th, #run-table td { overflow-wrap: anywhere; padding: 6px 4px; } }
+@media (max-width: 560px) { #fleet-buttons button { min-width: 40px; padding: 0 8px; } }

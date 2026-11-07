@@ -6,7 +6,8 @@
   var idx = window.SRCRO_SEED_INDEX || [];
   function $(id) { return document.getElementById(id); }
   function fmt(v, dp) { return v === null || v === undefined || isNaN(v) ? "n/a" : Number(v).toFixed(dp); }
-  function signed(v, dp) { return (v > 0 ? "+" : "") + fmt(v, dp); }
+  // A value that rounds to zero prints as 0.0, not -0.0 or +0.0 (an interval read "-0.0% to +0.8%").
+  function signed(v, dp) { var t = fmt(v, dp); return Number(t) === 0 ? fmt(0, dp) : (v > 0 ? "+" : "") + t; }
   var FLEETS = ["0", "1", "2", "3", "4"];
 
   function median(a) {
@@ -65,13 +66,16 @@
 
   function statsTable() {
     var body = FLEETS.map(function (k) {
-      var rows = rowsFor(k), pcts = rows.filter(function (r) { return r.pct !== null; }).map(function (r) { return r.pct; });
+      // From km at the project's 1000 g per km, not from the per-request figures rounded to 3 places, which
+      // made one all-diesel seed a tie, so this table said 37 of 90 where the factor table below said 38
+      // (demo sweep, 2026-11-02). At 1000 g per km the two are the same tier-1 figure.
+      var rows = rowsFor(k, 1000), pcts = rows.filter(function (r) { return r.pct !== null; }).map(function (r) { return r.pct; });
       if (!pcts.length) {
-        return "<tr><th scope=\"row\">" + k + "</th><td colspan=\"6\">The distance-only plan already emits nothing at tier-1, so there is no change to measure</td></tr>";
+        return "<tr><th scope=\"row\">" + (k * 25) + "%</th><td colspan=\"6\">The distance-only plan already emits nothing at tier-1, so there is no change to measure</td></tr>";
       }
       var ci = bootMedianCI(pcts, 20261101 + Number(k)), neg = pcts.filter(function (v) { return v < 0; }).length,
         pos = pcts.filter(function (v) { return v > 0; }).length;
-      return "<tr><th scope=\"row\">" + k + "</th><td>" + pcts.length + "</td><td>" + signed(median(pcts), 1) + "%</td><td>" +
+      return "<tr><th scope=\"row\">" + (k * 25) + "%</th><td>" + pcts.length + "</td><td>" + signed(median(pcts), 1) + "%</td><td>" +
         (ci ? signed(ci[0], 1) + "% to " + signed(ci[1], 1) + "%" : "n/a") + "</td><td>" + neg + " of " + pcts.length +
         "</td><td>" + pfmt(signTestP(neg, pos)) + "</td><td>" + fmt(mean(rows.map(function (r) { return r.ontime && r.ontime.distance; })), 1) +
         " and " + fmt(mean(rows.map(function (r) { return r.ontime && r.ontime.emissions; })), 1) + "</td></tr>";
@@ -85,7 +89,7 @@
     $("factor-table").tBodies[0].innerHTML = FLEETS.map(function (k) {
       var rows = rowsFor(k, f), pcts = rows.filter(function (r) { return r.pct !== null; }).map(function (r) { return r.pct; });
       var md = median(rows.map(function (r) { return r.d; })), me = median(rows.map(function (r) { return r.e; }));
-      return "<tr><th scope=\"row\">" + k + "</th><td>" + fmt(md, 3) + "</td><td>" + fmt(me, 3) + "</td><td>" +
+      return "<tr><th scope=\"row\">" + (k * 25) + "%</th><td>" + fmt(md, 3) + "</td><td>" + fmt(me, 3) + "</td><td>" +
         (pcts.length ? signed(median(pcts), 1) + "%" : "n/a") + "</td><td>" +
         (pcts.length ? pcts.filter(function (v) { return v < 0; }).length + " of " + pcts.length : "n/a") + "</td></tr>";
     }).join("");
@@ -144,7 +148,7 @@
     new MutationObserver(sync).observe(form, { attributes: true, attributeFilter: ["hidden"] });
     sync();
     if (window.L && window.SRCRO_LAYERS) {
-      intakeMap = L.map("intake-map", { zoomSnap: 0.25, attributionControl: false });
+      intakeMap = L.map("intake-map", { zoomSnap: 0.25, attributionControl: false, scrollWheelZoom: false });
       (window.SRCRO_LAYERS.boundary || []).forEach(function (ring) {
         L.polygon(ring, { color: "#6B7580", weight: 2, fill: true, fillColor: "#8DB8DD", fillOpacity: 0.15, interactive: false }).addTo(intakeMap);
       });

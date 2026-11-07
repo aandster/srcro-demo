@@ -3,287 +3,89 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Collection Routing Demo</title>
-<meta name="description" content="Seeing Reuse: Collection Routing Optimisation. Distance-only and emissions-aware planning side by side on one illustrative run.">
+<title>Seeing Reuse</title>
+<meta name="description" content="Seeing Reuse: Collection Routing Optimisation, an honours capstone on emissions-aware collection routing for City of Newcastle kerbside reuse.">
 <link rel="stylesheet" href="style.css">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Seeing Reuse">
+<meta property="og:title" content="Seeing Reuse: Collection Routing Optimisation">
+<meta property="og:description" content="Seeing Reuse: Collection Routing Optimisation, an honours capstone on emissions-aware collection routing for City of Newcastle kerbside reuse.">
+<meta property="og:url" content="https://srcro.aandster.me/">
+<meta property="og:image" content="https://srcro.aandster.me/poster-preview.jpg">
+<meta property="og:image:width" content="1600">
+<meta property="og:image:height" content="1132">
+<meta property="og:image:alt" content="The project poster, Seeing Reuse: Collection Routing Optimisation.">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="responsive.css">
+<link rel="stylesheet" href="home.css">
 </head>
 <body>
+<nav class="topbar" aria-label="Site">
+  <a class="brand" href="index.html"><span class="brand-mark" aria-hidden="true"></span>Seeing Reuse</a>
+  <div class="tabs">
+      <a class="tab-home" href="index.html" aria-current="page" aria-label="Home" title="Home"><svg class="ic-home" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3.2 2.5 11h2.7v9.3h5.3v-6h3v6h5.3V11h2.7z" fill="currentColor"/></svg></a>
+      <a href="explore.html">Explore Scenarios</a>
+      <a href="live.html">Live Plan</a>
+      <a href="results.html">Project Results</a>
+      <a href="qa.html">Q&amp;A</a>
+      <a href="poster">Poster</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="credits.html">Credits</a>
+  </div>
+  <a class="presenter-link" href="presenter.html">Presenter Controls</a>
+</nav>
 <header class="masthead">
-  <p class="kicker">SENG4001 Honours Capstone, University of Newcastle, 2026</p>
   <h1>Seeing Reuse: Collection Routing Optimisation</h1>
-  <p class="sub">Distance-only planning beside emissions-aware planning, on the same requests, the same day and the same fleet.</p>
-  <p class="byline">Jordan Maddock</p>
-  <a class="presenter-link" href="presenter.html">Presenter</a>
 </header>
 
-<main>
-  <section class="qr-section qr-visitor" aria-labelledby="qr-h">
+<main class="home">
+
+  <nav class="home-cards" aria-label="Where to go">
+    <!-- Live Plan first, so it sits beside the tour card in the top right (Jordan, 2026-11-02). -->
+    <a class="home-card" href="live.html">
+      <span id="home-live-badge" class="live-badge" hidden></span>
+      <h2>Live Plan</h2>
+      <p>Make a new scenario and watch the real planner solve it now.</p>
+    </a>
+    <a class="home-card" href="explore.html">
+      <h2>Explore Scenarios</h2>
+      <p>Watch 90 scenarios play out day by day. Change the fleet and compare the two plans.</p>
+    </a>
+    <a class="home-card" href="results.html">
+      <h2>Project Results</h2>
+      <p>What the project found: the headline savings, other solvers, multi-trip days and hills.</p>
+    </a>
+    <a class="home-card" href="qa.html">
+      <h2>Q&amp;A</h2>
+      <p>204 questions and answers, searchable by topic and word.</p>
+    </a>
+    <a class="home-card" href="poster">
+      <h2>The Poster</h2>
+      <p>Poster shown at the expo.</p>
+    </a>
+    <a class="home-card" href="architecture.html">
+      <h2>Architecture</h2>
+      <p>The system in four diagrams, from its users down to one planning day.</p>
+    </a>
+    <a class="home-card" href="credits.html">
+      <h2>Credits</h2>
+      <p>People, software, data and references.</p>
+    </a>
+  </nav>
+  <aside class="home-qr" aria-labelledby="qr-h">
     <div id="qr" class="qr" role="img" aria-label="QR code for https://srcro.aandster.me/"></div>
-    <div class="qr-text">
-      <h2 id="qr-h">Open this demo on your phone</h2>
+    <div>
+      <h2 id="qr-h">Scan to open on your phone</h2>
       <p class="qr-url">srcro.aandster.me</p>
-      <button id="qr-full" type="button">Show the QR code large</button>
     </div>
-  </section>
-
-  <section class="controls" aria-label="Controls">
-    <div class="plan">
-      <label for="plan">Pre-calculated scenario</label>
-      <select id="plan"><option>Loading scenarios</option></select>
-    </div>
-    <fieldset class="fleet">
-      <legend>Electric trucks of four</legend>
-      <div id="fleet-buttons" class="seg" role="group"></div>
-    </fieldset>
-    <div class="replay">
-      <button id="play" type="button" aria-pressed="false">Play</button>
-      <label for="day">Day <output id="day-label" for="day">loading</output></label>
-      <input id="day" type="range" min="1" max="1" value="1" step="1">
-    </div>
-    <div class="replay">
-      <button id="anim-play" type="button">Animate day</button>
-      <label for="anim">Time of day <output id="anim-label" for="anim">end of day</output></label>
-      <input id="anim" type="range" min="0" max="100" value="100" step="1">
-    </div>
-    <fieldset class="basemap">
-      <legend>Map background</legend>
-      <div class="seg" role="radiogroup">
-        <label><input type="radio" name="basemap" value="none" checked> Plain</label>
-        <label><input type="radio" name="basemap" value="street"> Street</label>
-        <label><input type="radio" name="basemap" value="satellite"> Satellite</label>
-      </div>
-    </fieldset>
-  </section>
-  <p class="note anim-note">Trucks follow the planned times. Drive times come from the routing engine's road speeds, each stop adds its planned service time, and between two stops a truck moves evenly along the road. A request fills in once its truck has finished there, and a truck grows as it fills, to full size at its 11 m3 body.</p>
-  <p id="source-note" class="source-note" hidden></p>
-
-  <section class="maps">
-    <article class="arm" aria-labelledby="h-distance">
-      <h2 id="h-distance">Distance-only planning</h2>
-      <div class="map-wrap">
-        <div id="map-distance" class="map" role="img" aria-label="Map of the distance-only routes for the selected day"></div>
-        <span class="fs-day" aria-hidden="true"></span>
-        <button type="button" class="fs-btn" data-map="distance" aria-label="Full screen, distance-only map" aria-pressed="false"><svg class="ic-expand" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8V3h5M12 3h5v5M17 12v5h-5M8 17H3v-5M3 3l5 5M17 3l-5 5M17 17l-5-5M3 17l5-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><svg class="ic-collapse" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M8 3v5H3M12 3v5h5M17 12h-5v5M3 12h5v5M8 8L3 3M12 8l5-5M12 12l5 5M8 12l-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-      </div>
-      <dl class="kpis" id="kpi-distance"></dl>
-    </article>
-    <article class="arm" aria-labelledby="h-emissions">
-      <h2 id="h-emissions">Emissions-aware planning</h2>
-      <div class="map-wrap">
-        <div id="map-emissions" class="map" role="img" aria-label="Map of the emissions-aware routes for the selected day"></div>
-        <span class="fs-day" aria-hidden="true"></span>
-        <button type="button" class="fs-btn" data-map="emissions" aria-label="Full screen, emissions-aware map" aria-pressed="false"><svg class="ic-expand" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8V3h5M12 3h5v5M17 12v5h-5M8 17H3v-5M3 3l5 5M17 3l-5 5M17 17l-5-5M3 17l5-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><svg class="ic-collapse" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M8 3v5H3M12 3v5h5M17 12h-5v5M3 12h5v5M8 8L3 3M12 8l5-5M12 12l5 5M8 12l-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-      </div>
-      <dl class="kpis" id="kpi-emissions"></dl>
-    </article>
-  </section>
-
-  <section class="compare" aria-labelledby="compare-h">
-    <h2 id="compare-h">What emissions-aware planning changes</h2>
-    <p class="note">Each figure is the emissions-aware plan minus the distance-only plan, so a negative number means the emissions-aware plan is lower.</p>
-    <div id="diff" class="diff"></div>
-    <h3>Whole run</h3>
-    <table id="run-table" class="day-table">
-      <caption class="visually-hidden">Figures for the whole run in each plan, and the change</caption>
-      <thead><tr><th scope="col">Figure</th><th scope="col">Distance-only</th><th scope="col">Emissions-aware</th><th scope="col">Change</th></tr></thead>
-      <tbody></tbody>
-    </table>
-    <div class="charts">
-      <figure>
-        <figcaption>CO2-e so far, kg, by day</figcaption>
-        <svg id="chart-cum" viewBox="0 0 560 260" role="img" aria-label="Line chart of CO2-e so far by day for both plans. The same figures are in the table below."></svg>
-      </figure>
-      <figure>
-        <figcaption>CO2-e per request, kg, by electric trucks of four</figcaption>
-        <svg id="chart-fleet" viewBox="0 0 560 260" role="img" aria-label="Bar chart of CO2-e per request for both plans at each number of electric trucks. The figures for the chosen fleet are in the whole run table."></svg>
-      </figure>
-    </div>
-    <p class="note">Service-level figures. The first three are shares of collected requests, higher is better. Waits are in business days from booking, lower is better. A collection is on time only on its advised day, the day the customer was told at the first re-plan.</p>
-    <h3>This day</h3>
-    <table id="day-table" class="day-table">
-      <caption class="visually-hidden">Figures for the selected day in each plan</caption>
-      <thead><tr><th scope="col">Figure</th><th scope="col">Distance-only</th><th scope="col">Emissions-aware</th></tr></thead>
-      <tbody></tbody>
-    </table>
-    <ul class="legend" aria-label="Map legend">
-      <li><svg width="40" height="10" aria-hidden="true"><line x1="0" y1="5" x2="40" y2="5" stroke="#D55E00" stroke-width="4"/></svg> Diesel truck route</li>
-      <li><svg width="40" height="10" aria-hidden="true"><line x1="0" y1="5" x2="40" y2="5" stroke="#0072B2" stroke-width="4"/></svg> Electric truck route</li>
-      <li><svg width="14" height="14" aria-hidden="true"><rect x="1" y="1" width="12" height="12" fill="#15181C"/></svg> Depot</li>
-      <li><svg width="40" height="10" aria-hidden="true"><line x1="0" y1="5" x2="40" y2="5" stroke="#B9C0C8" stroke-width="3"/></svg> Major road</li>
-    </ul>
-  </section>
-
-  <section class="seeds" id="seeds" aria-labelledby="seeds-h" hidden>
-    <h2 id="seeds-h">All pre-calculated scenarios</h2>
-    <p class="note">Each point and row is one scenario seed, the same requests for both plans, at the fleet chosen above. Tier-1 CO2-e per request over the measured days. These are descriptive. The pre-registered results are on the poster. Pick a seed to load it.</p>
-    <div id="seed-summary" class="diff"></div>
-    <figure class="seed-fig">
-      <figcaption>Change in CO2-e per request, emissions-aware against distance-only, one point per seed</figcaption>
-      <svg id="chart-seeds" viewBox="0 0 560 260" role="img" aria-label="Dot plot of the change in CO2-e per request for each seed. The same figures are in the table below."></svg>
-    </figure>
-    <div class="table-scroll">
-      <table id="seed-table" class="day-table">
-        <caption class="visually-hidden">CO2-e per request for every seed in each plan, and the change</caption>
-        <thead><tr><th scope="col">Seed</th><th scope="col">Distance-only, kg</th><th scope="col">Emissions-aware, kg</th><th scope="col">Change, kg</th><th scope="col">Change, percent</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-  </section>
-
-  <section class="stats" id="stats" aria-labelledby="stats-h">
-    <h2 id="stats-h">Across the 90 scenarios</h2>
-    <p class="note">Descriptive statistics over the 90 pre-calculated scenarios, one row per fleet, computed in this page from the figures above. Change is emissions-aware against distance-only tier-1 CO2-e per request, paired by seed. The interval is a bootstrap 95 percent interval of the median change (2,000 resamples, fixed seed). The sign test is exact and two-sided. The pre-registered results on the poster use a Wilcoxon signed-rank test with Holm adjustment on their own seeds, so none of these figures replaces them.</p>
-    <div class="table-scroll">
-      <table id="stats-table" class="day-table">
-        <caption class="visually-hidden">Change in CO2-e per request across seeds, by number of electric trucks</caption>
-        <thead><tr><th scope="col">Electric trucks of four</th><th scope="col">Seeds compared</th><th scope="col">Median change</th><th scope="col">95% interval of the median</th><th scope="col">Seeds where emissions-aware is lower</th><th scope="col">Sign test p</th><th scope="col">Collected on the advised day, mean percent, distance-only and emissions-aware</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-
-    <h3>Diesel factor scenarios</h3>
-    <p class="note">The same 90 scenarios re-scored at another diesel factor. Tier-1 CO2-e is diesel kilometres times the factor, and electric trucks count 0 g per km. The plans were made at 1000 g per km and are not re-planned, so this is what the same routes would emit, not what a planner told another factor would choose. The factors are the project's driving scenarios: low 780 (ABS Survey of Motor Vehicle Use 2020, rigid trucks), central 1000 (an unsourced assumption), high 1140 (derived from NREL low-speed refuse-style cycle data) and stress 1300 (Argonne GREET, Class 8a refuse truck, includes stationary fuel).</p>
-    <fieldset class="rawarm"><legend>Diesel factor</legend>
-      <div class="seg" role="radiogroup">
-        <label><input type="radio" name="factor" value="low"> Low 780</label>
-        <label><input type="radio" name="factor" value="central" checked> Central 1000</label>
-        <label><input type="radio" name="factor" value="high"> High 1140</label>
-        <label><input type="radio" name="factor" value="stress"> Stress 1300</label>
-      </div>
-    </fieldset>
-    <p class="note">Showing <strong id="factor-now"></strong>, medians over the seeds.</p>
-    <div class="table-scroll">
-      <table id="factor-table" class="day-table">
-        <caption class="visually-hidden">Re-scored CO2-e per request by number of electric trucks</caption>
-        <thead><tr><th scope="col">Electric trucks of four</th><th scope="col">Distance-only, kg per request</th><th scope="col">Emissions-aware, kg per request</th><th scope="col">Median change</th><th scope="col">Seeds where emissions-aware is lower</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-  </section>
-
-  <section class="rawdata" id="rawdata" aria-labelledby="raw-h" hidden>
-    <h2 id="raw-h">Planner input and output</h2>
-    <p class="note">The files behind the maps above, for the scenario, electric trucks and plan chosen at the top. The output is the planner's <code>solution.json</code>, as described in the contract below. The input is what the planner was given, taken from the same file: the resolved settings, every request that arrived (with its location, volume and arrival day) and the intake outcomes for flagged and rejected requests. Coordinates in the requests are latitude then longitude.</p>
-    <div class="raw-controls">
-      <fieldset class="rawarm"><legend>Plan</legend>
-        <div class="seg" role="radiogroup">
-          <label><input type="radio" name="rawarm" value="distance" checked> Distance-only</label>
-          <label><input type="radio" name="rawarm" value="emissions"> Emissions-aware</label>
-        </div>
-      </fieldset>
-      <button id="raw-view-in" type="button">View input</button>
-      <button id="raw-view-out" type="button">View output</button>
-      <button id="raw-dl-in" type="button">Download input</button>
-      <button id="raw-dl-out" type="button">Download output (solution.json)</button>
-      <a id="raw-gz" class="rawlink" href="#" hidden>Download compressed original</a>
-    </div>
-    <p id="raw-status" class="note" aria-live="polite"></p>
-    <div id="raw-summary" class="diff"></div>
-    <div class="table-scroll" id="raw-table-wrap" hidden>
-      <table id="raw-table" class="day-table">
-        <caption id="raw-table-cap" class="visually-hidden">Requests</caption>
-        <thead></thead><tbody></tbody>
-      </table>
-    </div>
-    <pre id="raw-view" class="raw-view" tabindex="0" hidden></pre>
-    <h3>The contract</h3>
-    <p class="note">The output follows <a href="contract/SOLUTION_CONTRACT.md">the solution.json contract</a> (version 1), which a run checks itself against with <a href="contract/solution_v1.json">this JSON Schema</a> before it counts as finished. Every submitted request appears in it with exactly one outcome: collected, outstanding, flagged or rejected at intake. These runs are descriptive, not pre-registered results.</p>
-    <table class="day-table contract-table">
-      <caption class="visually-hidden">Top level keys of solution.json</caption>
-      <thead><tr><th scope="col">Key</th><th scope="col">What it holds</th></tr></thead>
-      <tbody>
-        <tr><th scope="row">config</th><td>the resolved run settings</td></tr>
-        <tr><th scope="row">manifest</th><td>commit, settings hash, software versions, seed</td></tr>
-        <tr><th scope="row">arrivals</th><td>every request that arrived</td></tr>
-        <tr><th scope="row">flagged, rejected</th><td>intake outcomes with a reason code</td></tr>
-        <tr><th scope="row">daily</th><td>one entry per simulated day</td></tr>
-        <tr><th scope="row">collected</th><td>every request collected, with its day and wait</td></tr>
-        <tr><th scope="row">day_routes</th><td>the routes each truck drives, by day</td></tr>
-        <tr><th scope="row">kpis</th><td>headline figures for the measured days</td></tr>
-      </tbody>
-    </table>
-  </section>
-
-  <section class="live" id="live" aria-labelledby="live-h" hidden>
-    <h2 id="live-h">Live re-plan</h2>
-    <div id="live-hosted" class="live-hosted" hidden>
-      <p id="live-server" class="live-server" aria-live="polite">Checking the live server</p>
-      <p id="live-queue" class="live-queue" aria-live="polite"></p>
-    </div>
-    <form id="live-form" hidden>
-      <p id="live-intro">Run the real planner now on a new short scenario, both plans at once. A 5 day run takes under half a minute once it starts. Runs queue first in, first out, one at a time.</p>
-      <div class="live-grid">
-        <label for="live-seed">Scenario number</label>
-        <input id="live-seed" type="number" min="1" max="2147483647" step="1" value="7" inputmode="numeric">
-        <label class="inline"><input id="live-random" type="checkbox"> New random scenario</label>
-        <label for="live-fleet">Electric trucks of four</label>
-        <select id="live-fleet"><option>0</option><option selected>1</option><option>2</option><option>3</option><option>4</option></select>
-        <label for="live-arrivals">Requests a day (10 to 40)</label>
-        <input id="live-arrivals" type="number" min="10" max="40" step="1" value="25" inputmode="numeric">
-        <label for="live-days">Measured days</label>
-        <select id="live-days"><option value="5" selected>5 days (1 queue slot)</option><option value="10">10 days (2 slots)</option><option value="20">20 days (3 slots)</option></select>
-      </div>
-      <button id="live-go" type="submit">Re-plan now</button>
-      <button id="live-back" type="button" hidden>Back to the pre-calculated scenarios</button>
-      <div class="progress" aria-live="polite">
-        <progress id="live-progress" max="1" value="0" hidden></progress>
-        <span id="live-status"></span>
-      </div>
-    </form>
-  </section>
-  <section class="intake" id="intake" aria-labelledby="intake-h" hidden>
-    <h2 id="intake-h">Intake check</h2>
-    <p class="note">Every request is checked once when it arrives, before it is routed. This sends one request to the planner's own intake code. Admitted requests join the plan. Flagged requests are real but need manual handling, so they are kept and reported, never silently dropped. Rejected records cannot be placed or served at all. Click the map to place a point, or use an example. Available while the live server is on.</p>
-    <div id="intake-map" class="intake-map" role="img" aria-label="Map of the council area to place a request on"></div>
-    <div class="live-grid">
-      <label for="intake-lat">Latitude</label><input id="intake-lat" type="text" inputmode="decimal" autocomplete="off">
-      <label for="intake-lon">Longitude</label><input id="intake-lon" type="text" inputmode="decimal" autocomplete="off">
-      <label for="intake-vol">Volume, m3</label><input id="intake-vol" type="text" inputmode="decimal" autocomplete="off">
-      <label class="inline"><input id="intake-noday" type="checkbox"> No arrival day</label>
-    </div>
-    <div class="raw-controls">
-      <button id="intake-go" type="button">Check request</button>
-      <button type="button" data-intake="inside">Example: inside</button>
-      <button type="button" data-intake="outside">Outside the council area</button>
-      <button type="button" data-intake="over">Over the volume cap</button>
-      <button type="button" data-intake="novolume">No volume</button>
-      <button type="button" data-intake="nocoords">No coordinates</button>
-      <button type="button" data-intake="noday">No arrival day</button>
-    </div>
-    <p id="intake-result" class="intake-result" aria-live="polite"></p>
-  </section>
-
-  <section class="poster" id="poster" aria-labelledby="poster-h">
-    <h2 id="poster-h">Pre-registered results from the poster</h2>
-    <p class="note">These are the tested results, and they are not figures from the runs on this page. Each was pre-registered, run over seeds fixed in advance and tested with a paired test, and each carries the caveat beside it. Electric trucks count as 0 g CO2-e per km (tank to wheel). The model covers collection routing only, on synthetic requests and a frozen road network. The 1000 g per km diesel factor is not sourced for this truck, so absolute kilograms are not predictions.</p>
-    <ul class="claims">
-      <li><strong>With one or two battery-electric trucks of four</strong>, emissions-aware planning cut tier-1 CO2-e per request by 0.735 kg (28.57 percent) and 0.837 kg (55.38 percent) against distance-only planning. Over 100 seeds the figures are -0.725 kg (28.35 percent) and -0.863 kg (55.78 percent). 30 seeds.</li>
-      <li><strong>Most of that saving, 55.1 to 73.7 percent,</strong> comes from giving the longest routes to the electric trucks. Emissions-aware routing adds a smaller, significant saving on top. A post hoc split, a ratio of means.</li>
-      <li><strong>If electric trucks charge at New South Wales grid factors (600 to 780 g per km)</strong>, the saving falls to 1.48 to 10.75 percent (0.052 to 0.313 kg) per request. Read beside the first line.</li>
-      <li><strong>With four diesel trucks there was no tier-1 saving.</strong> The gradient objective cost 0.66 to 0.92 percent (0.028 to 0.039 kg) more per request.</li>
-      <li><strong>At published refuse-truck diesel factors of 2,089 to 3,423 g per km</strong>, the saving stayed within 2 percentage points of its value at 1000 g per km.</li>
-    </ul>
-    <p class="note">The scenarios above are a separate set of 90 seeds, shown descriptively. They are not these results and do not replace them. No claim here says emissions are minimal.</p>
-  </section>
+  </aside>
 </main>
 
-
-<!-- Leaflet 1.9.4 is the only external script (task 063). A local copy in vendor/ is the
-     offline fallback, added on the laptop (docs/DEMO.md). -->
-<!-- The integrity hash is cdnjs's published sha512 for this file, and equal to the hash of
-     vendor/leaflet.js (checked 2026-10-31). A changed file fails to load and the page falls back
-     to the local copy below. -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"
-        integrity="sha512-puJW3E/qXDqYp9IfhAI54BJEaWIfloJ7JWs7OeD5i6ruC9JZL1gERT1wjtwXFlh7CjE7ZJ+/vcRZRkIYIb6p4g==" crossorigin="anonymous"></script>
-<script>if (!window.L) document.write('<script src="vendor/leaflet.js"><\/script>');</script>
 <script src="vendor/qrcode.js"></script>
 <script src="qr.js"></script>
-<script src="layers.js"></script>
-<script src="seeds/seeds.js"></script>
-<!-- Addresses of the web live re-plan (scripts/cloud/live_replan/). Absent or empty, the hosted
-     page keeps the "presenter's laptop" line. -->
+<script src="polish.js"></script>
 <script src="live-config.js"></script>
-<script src="app.js"></script>
-<script src="extras.js"></script>
+<script src="home.js"></script>
 </body>
 </html>

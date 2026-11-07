@@ -1,0 +1,36 @@
+/* Questions page (Jordan, 2026-11-01). Colours come from style.css, so light and dark both follow it. */
+.qa { }
+.qa-intro { margin: 0 0 14px; }
+.qa-label { display: block; font-weight: 600; margin-bottom: 6px; }
+.qa-search input { width: 100%; max-width: 620px; min-height: 44px; padding: 0 12px; font: inherit; color: var(--ink);
+  background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; box-sizing: border-box; }
+.qa-search input:focus { outline: 2px solid var(--accent, #8DB8DD); outline-offset: 1px; }
+.qa-count { margin: 6px 0 10px; color: var(--muted); font-size: 14px; }
+.qa-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+.qa-chip { min-height: 34px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--rule); background: transparent;
+  color: var(--ink); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.qa-chip[aria-pressed="true"] { background: var(--accent, #8DB8DD); border-color: var(--accent, #8DB8DD); color: #0B1A24; }
+.qa-tools { display: flex; gap: 8px; margin: 0 0 12px; flex-wrap: wrap; }
+.qa-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 32px; }
+.qa-item { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; }
+.qa-item[hidden] { display: none; }
+.qa-item summary { cursor: pointer; padding: 12px 14px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; list-style: none; }
+.qa-item summary::-webkit-details-marker { display: none; }
+.qa-item summary::before { content: "+"; font-weight: 800; color: var(--accent, #8DB8DD); width: 1em; flex: none; }
+.qa-item[open] summary::before { content: "\2212"; }
+.qa-q { font-weight: 700; flex: 1 1 260px; min-width: 0; overflow-wrap: anywhere; }
+.qa-cat { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.qa-body { padding: 0 14px 12px calc(14px + 1em + 12px); }
+.qa-a { margin: 0 0 8px; line-height: 1.5; overflow-wrap: anywhere; }
+.qa mark { background: #F2C14E; color: #15181C; border-radius: 2px; padding: 0 1px; }
+/* On a phone the topic chips stay in one row that scrolls sideways inside itself, so all 20 fit without
+   a tall block of chips above the questions, and the page itself never scrolls sideways (Jordan). */
+@media (max-width: 480px) {
+  .qa-chips { flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; margin-left: -16px; margin-right: -16px; padding: 0 16px 2px; }
+  .qa-chips::-webkit-scrollbar { display: none; }
+  .qa-chip { flex: none; white-space: nowrap; }
+  .qa-body { padding: 0 12px 12px; }
+  .qa-item summary { padding: 12px; }
+  .qa-cat { white-space: normal; }
+}

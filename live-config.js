@@ -1,4 +1,3 @@
-// Addresses of the web live re-plan (scripts/cloud/live_replan/, written by its deploy.sh).
-// Empty means no web live re-plan, and the hosted page keeps the "presenter's laptop" line.
-// features lists what this stack's routes offer, so the page only shows what works.
-window.SRCRO_LIVE = { proxy: "https://89b86xu6i2.execute-api.ap-south-2.amazonaws.com", control: "https://89b86xu6i2.execute-api.ap-south-2.amazonaws.com", features: ["intake", "solutions"] };
+// The GitHub Pages copy has no live planning server. Empty addresses keep the Live Plan page greyed out
+// with its "not available" message, and every pre-calculated scenario works as usual.
+window.SRCRO_LIVE = { proxy: "", control: "", features: [] };

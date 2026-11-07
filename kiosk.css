@@ -1,0 +1,28 @@
+/* Stand screen mode (Jordan, 2026-11-01). Every rule needs the kiosk-attract class, which only kiosk.js sets
+   and only when the address has ?kiosk=1. */
+.kiosk-strip { display: none; }
+.kiosk-shield { position: fixed; inset: 0; z-index: 9000; background: transparent; }
+.kiosk-attract .kiosk-shield { cursor: none; }
+html.kiosk-attract, body.kiosk-attract { overflow: hidden; height: 100%; }
+body.kiosk-attract { padding-top: 150px; }
+body.kiosk-attract .topbar, body.kiosk-attract .masthead, body.kiosk-attract .controls,
+body.kiosk-attract .anim-note { display: none; }
+body.kiosk-attract .kiosk-strip { display: flex; align-items: center; justify-content: space-between; gap: 24px;
+  position: fixed; top: 0; left: 0; right: 0; height: 150px; z-index: 8000; padding: 12px 24px;
+  background: var(--accent); color: #FFFFFF; }
+@media (prefers-color-scheme: dark) { body.kiosk-attract .kiosk-strip { color: #0B1A24; } }
+.kiosk-caption { margin: 0; font-size: max(18px, min(2.4vw, 32px)); font-weight: 800; line-height: 1.2; }
+.kiosk-now { margin: 6px 0 0; font-size: max(14px, min(1.4vw, 20px)); }
+.kiosk-qr { flex: none; text-align: center; }
+.kiosk-qrbox { width: 120px; background: #FFFFFF; border-radius: 8px; line-height: 0; margin: 0 auto; }
+.kiosk-qrbox svg { width: 100%; height: auto; display: block; }
+.kiosk-url { margin: 2px 0 0; font-size: 14px; font-weight: 700; }
+body.kiosk-attract .player { position: static; margin-top: 0; box-shadow: none; }
+body.kiosk-attract .map { height: max(220px, calc(100vh - 560px)); }
+@media (max-width: 700px) {
+  body.kiosk-attract { padding-top: 120px; }
+  body.kiosk-attract .kiosk-strip { height: 120px; padding: 8px 12px; gap: 10px; }
+  .kiosk-qrbox { width: 80px; }
+  .kiosk-caption { font-size: 13px; }
+  .kiosk-now { display: none; }
+}

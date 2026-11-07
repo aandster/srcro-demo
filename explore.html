@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explore Scenarios</title>
+<meta name="description" content="Seeing Reuse: Collection Routing Optimisation. Distance-only and emissions-aware planning side by side on 90 pre-calculated scenarios, with a live plan.">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="diff.css">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Seeing Reuse">
+<meta property="og:title" content="Explore Scenarios">
+<meta property="og:description" content="Seeing Reuse: Collection Routing Optimisation. Distance-only and emissions-aware planning side by side on 90 pre-calculated scenarios, with a live plan.">
+<meta property="og:url" content="https://srcro.aandster.me/explore.html">
+<meta property="og:image" content="https://srcro.aandster.me/poster-preview.jpg">
+<meta property="og:image:width" content="1600">
+<meta property="og:image:height" content="1132">
+<meta property="og:image:alt" content="The project poster, Seeing Reuse: Collection Routing Optimisation.">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="responsive.css">
+<link rel="stylesheet" href="tour.css">
+<link rel="stylesheet" href="kiosk.css">
+</head>
+<body data-page="explore">
+<nav class="topbar" aria-label="Site">
+  <a class="brand" href="index.html"><span class="brand-mark" aria-hidden="true"></span>Seeing Reuse</a>
+  <div class="tabs">
+      <a class="tab-home" href="index.html" aria-label="Home" title="Home"><svg class="ic-home" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3.2 2.5 11h2.7v9.3h5.3v-6h3v6h5.3V11h2.7z" fill="currentColor"/></svg></a>
+      <a href="explore.html" aria-current="page">Explore Scenarios</a>
+      <a href="live.html">Live Plan</a>
+      <a href="results.html">Project Results</a>
+      <a href="qa.html">Q&amp;A</a>
+      <a href="poster">Poster</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="credits.html">Credits</a>
+  </div>
+  <a class="presenter-link" href="presenter.html">Presenter Controls</a>
+</nav>
+<header class="masthead">
+  <h1>Explore Scenarios</h1>
+</header>
+
+<main>
+  <section class="controls" aria-label="Controls">
+    <div class="ctl-panel ctl-scenario" role="group" aria-labelledby="ctl-scenario-h">
+      <h2 id="ctl-scenario-h" class="ctl-title">Scenario</h2>
+      <div class="ctl-row">
+        <div class="plan">
+          <label for="plan">Pre-calculated scenario</label>
+          <select id="plan"><option>Loading scenarios</option></select>
+        </div>
+        <fieldset class="fleet">
+          <legend>Electric share of fleet</legend>
+          <div id="fleet-buttons" class="seg" role="group"></div>
+        </fieldset>
+        <fieldset class="basemap mapview">
+          <legend>Maps shown</legend>
+          <div class="seg" role="radiogroup">
+            <label><input type="radio" name="mapview" value="both" checked> Both</label>
+            <label><input type="radio" name="mapview" value="distance"> Distance-only</label>
+            <label><input type="radio" name="mapview" value="emissions"> Emissions-aware</label>
+          </div>
+        </fieldset>
+      </div>
+    </div>
+  </section>
+  <div class="player" role="group" aria-label="Playback of the run">
+      <button id="play" class="player-btn" type="button" aria-pressed="false" aria-label="Play">
+        <svg class="ic-play" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M7 4.5v15l13-7.5z" fill="currentColor"/></svg>
+        <svg class="ic-pause" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M6 4h4.5v16H6zM13.5 4H18v16h-4.5z" fill="currentColor"/></svg>
+      </button>
+      <div class="player-track">
+        <input id="run" type="range" min="0" max="100" value="100" step="1" aria-label="Position in the run, day and time of day">
+        <div id="run-ticks" class="player-ticks" aria-hidden="true"></div>
+      </div>
+      <output id="run-label" class="player-time" for="run">Loading</output>
+      <button id="speed" class="player-speed" type="button" aria-pressed="false" aria-label="Playback speed, 1 times" title="Speed, click for 1×, 2×, 3× or 4×">1×</button>
+    </div>
+  <p class="note anim-note">Trucks follow the planned times. Drive times come from the routing engine's road speeds, each stop adds its planned service time, and between two stops a truck moves evenly along the road. A request fills in once its truck has finished there. A truck darkens as it fills, to its deepest shade at its full 11 m3 body, and it disappears once it is back at the depot.</p>
+  <p id="source-note" class="source-note" hidden></p>
+
+  <section class="totals" id="totals" aria-labelledby="totals-h">
+    <h2 id="totals-h"><span class="scope-pill scope-sofar">Run so far</span> Up to this moment</h2>
+    <div class="totals-grid">
+      <div class="tot-block"><h3>Distance-only plan</h3>
+        <div class="tot-row"><span class="tot-name">CO2-e emitted</span><span class="tot-track"><span id="bar-co2-distance" class="tot-bar tot-dist"></span></span><output id="tot-co2-distance"></output></div>
+        <div class="tot-row"><span class="tot-name">Distance travelled</span><span class="tot-track"><span id="bar-km-distance" class="tot-bar tot-dist"></span></span><output id="tot-km-distance"></output></div>
+        <div class="tot-row"><span class="tot-name">Volume collected</span><span class="tot-track"><span id="bar-vol-distance" class="tot-bar tot-dist"></span></span><output id="tot-vol-distance"></output></div>
+      </div>
+      <div class="tot-block"><h3>Emissions-aware plan</h3>
+        <div class="tot-row"><span class="tot-name">CO2-e emitted</span><span class="tot-track"><span id="bar-co2-emissions" class="tot-bar tot-emis"></span></span><output id="tot-co2-emissions"></output></div>
+        <div class="tot-row"><span class="tot-name">Distance travelled</span><span class="tot-track"><span id="bar-km-emissions" class="tot-bar tot-emis"></span></span><output id="tot-km-emissions"></output></div>
+        <div class="tot-row"><span class="tot-name">Volume collected</span><span class="tot-track"><span id="bar-vol-emissions" class="tot-bar tot-emis"></span></span><output id="tot-vol-emissions"></output></div>
+      </div>
+    </div>
+  </section>
+  <div class="day-band" id="day-band">
+  <h2 id="day-h" class="band-h"><span class="scope-pill scope-day">This day</span> <span class="day-label">Day 1</span></h2>
+  <p class="note band-note">The maps, figures and requests in this band are for the day shown on the playback bar.</p>
+  <section class="maps" aria-labelledby="day-h">
+    <article class="arm" aria-labelledby="h-distance">
+      <h3 id="h-distance">Distance-only planning</h3>
+      <div class="map-wrap">
+        <div id="map-distance" class="map" role="img" aria-label="Map of the distance-only routes for the selected day"></div>
+        <span class="fs-day" aria-hidden="true"></span>
+        <button type="button" class="fs-btn" data-map="distance" aria-label="Full screen, distance-only map" aria-pressed="false"><svg class="ic-expand" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8V3h5M12 3h5v5M17 12v5h-5M8 17H3v-5M3 3l5 5M17 3l-5 5M17 17l-5-5M3 17l5-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><svg class="ic-collapse" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M8 3v5H3M12 3v5h5M17 12h-5v5M3 12h5v5M8 8L3 3M12 8l5-5M12 12l5 5M8 12l-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>
+      <dl class="kpis" id="kpi-distance"></dl>
+    </article>
+    <article class="arm" aria-labelledby="h-emissions">
+      <h3 id="h-emissions">Emissions-aware planning</h3>
+      <div class="map-wrap">
+        <div id="map-emissions" class="map" role="img" aria-label="Map of the emissions-aware routes for the selected day"></div>
+        <span class="fs-day" aria-hidden="true"></span>
+        <button type="button" class="fs-btn" data-map="emissions" aria-label="Full screen, emissions-aware map" aria-pressed="false"><svg class="ic-expand" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8V3h5M12 3h5v5M17 12v5h-5M8 17H3v-5M3 3l5 5M17 3l-5 5M17 17l-5-5M3 17l5-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><svg class="ic-collapse" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M8 3v5H3M12 3v5h5M17 12h-5v5M3 12h5v5M8 8L3 3M12 8l5-5M12 12l5 5M8 12l-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>
+      <dl class="kpis" id="kpi-emissions"></dl>
+    </article>
+    <ul class="legend" aria-label="Map legend">
+      <li><svg width="40" height="10" aria-hidden="true"><line x1="0" y1="5" x2="40" y2="5" stroke="#D55E00" stroke-width="4"/></svg> Diesel truck route</li>
+      <li><svg width="40" height="10" aria-hidden="true"><line x1="0" y1="5" x2="40" y2="5" stroke="#0072B2" stroke-width="4"/></svg> Electric truck route</li>
+      <li><svg width="14" height="14" aria-hidden="true"><rect x="1" y="1" width="12" height="12" fill="#15181C" stroke="#FFFFFF" stroke-width="1.5"/></svg> Depot</li>
+      <li><svg width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="#15181C" fill-opacity="0.6" stroke="#D55E00" stroke-width="2.5"/></svg> Scheduled stop, filled once collected</li>
+      <li><svg width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="3.5" fill="#FFFFFF" stroke="#15181C" stroke-width="1.5"/></svg> New request today</li>
+      <li><svg width="40" height="10" aria-hidden="true"><line x1="0" y1="5" x2="40" y2="5" stroke="#B9C0C8" stroke-width="3"/></svg> Major road</li>
+    </ul>
+  </section>
+
+  <section class="requests" id="requests" aria-labelledby="requests-h">
+    <h2 id="requests-h"><span class="scope-pill scope-day">This day</span> Requests and re-planning</h2>
+    <p class="note">Every morning the planner re-plans the next business days for every request still waiting and tells each new request its advised collection day. Today's new requests show as small white dots on each map, and the day's scheduled stops as rings in their truck's colour. The figures below come from each plan's own output file.</p>
+    <p class="note" id="requests-note"></p>
+    <div class="req-grid">
+      <div class="req-plan" id="req-distance">
+        <h3>Distance-only plan</h3>
+        <div class="raw-summary req-figs"></div>
+        <h4>How far ahead today's requests were booked</h4>
+        <div class="req-hist"></div>
+        <p class="note req-hist-note"></p>
+        <div class="table-scroll">
+          <table class="day-table">
+            <thead><tr><th scope="col">Request</th><th scope="col">Volume, m3</th><th scope="col">Advised day (business days ahead)</th><th scope="col">Collected on day</th><th scope="col">Wait, business days</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="req-plan" id="req-emissions">
+        <h3>Emissions-aware plan</h3>
+        <div class="raw-summary req-figs"></div>
+        <h4>How far ahead today's requests were booked</h4>
+        <div class="req-hist"></div>
+        <p class="note req-hist-note"></p>
+        <div class="table-scroll">
+          <table class="day-table">
+            <thead><tr><th scope="col">Request</th><th scope="col">Volume, m3</th><th scope="col">Advised day (business days ahead)</th><th scope="col">Collected on day</th><th scope="col">Wait, business days</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+  </div>
+  <section class="compare" aria-labelledby="compare-h">
+    <h2 id="compare-h"><span class="scope-pill scope-run">Whole run</span> What emissions-aware planning changes</h2>
+    <p class="note">Totals over all the measured days, whatever day the playback bar shows. Each figure is the emissions-aware plan minus the distance-only plan, so a negative number means the emissions-aware plan is lower.</p>
+    <div id="diff" class="diff"></div>
+    <table id="run-table" class="day-table">
+      <caption class="visually-hidden">Figures for the whole run in each plan, and the change</caption>
+      <thead><tr><th scope="col">Figure</th><th scope="col">Distance-only</th><th scope="col">Emissions-aware</th><th scope="col">Change</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="charts">
+      <figure>
+        <figcaption><span class="scope-pill scope-byday">By day</span> CO2-e so far, kg, by day</figcaption>
+        <svg id="chart-cum" viewBox="0 0 560 260" role="img" aria-label="Line chart of CO2-e so far by day for both plans. The same figures are in the table below."></svg>
+      </figure>
+      <figure>
+        <figcaption><span class="scope-pill scope-run">Whole run</span> CO2-e per request, kg, by electric share of the fleet</figcaption>
+        <svg id="chart-fleet" viewBox="0 0 560 260" role="img" aria-label="Bar chart of CO2-e per request for both plans at each number of electric trucks. The figures for the chosen fleet are in the whole run table."></svg>
+      </figure>
+    </div>
+    <p class="note">Service-level figures. The first three are shares of collected requests, higher is better. Waits are in business days from booking, lower is better. A collection is on time only on its advised day, the day the customer was told at the first re-plan.</p>
+  </section>
+
+  <section class="seeds" id="seeds" aria-labelledby="seeds-h" hidden>
+    <h2 id="seeds-h"><span class="scope-pill scope-all">All 90 scenarios</span> Scenario by scenario</h2>
+    <p class="note">Each point and row is one scenario seed, the same requests for both plans, at the fleet chosen above. Tier-1 CO2-e per request over the measured days. These are descriptive. The pre-registered results are on the poster. Pick a seed to load it.</p>
+    <div id="seed-summary" class="diff"></div>
+    <figure class="seed-fig">
+      <figcaption>One point per seed</figcaption>
+      <svg id="chart-seeds" viewBox="0 0 560 260" role="img" aria-label="Scatter plot, one point per seed, of the change in CO2-e per request against the distance-only plan CO2-e per request. The same figures are in the table below."></svg>
+    </figure>
+    <div class="table-scroll">
+      <table id="seed-table" class="day-table">
+        <caption class="visually-hidden">CO2-e per request for every seed in each plan, and the change</caption>
+        <thead><tr><th scope="col">Seed</th><th scope="col">Distance-only, kg</th><th scope="col">Emissions-aware, kg</th><th scope="col">Change, kg</th><th scope="col">Change, percent</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="stats" id="stats" aria-labelledby="stats-h">
+    <h2 id="stats-h"><span class="scope-pill scope-all">All 90 scenarios</span> Summary by fleet</h2>
+    <p class="note">Descriptive statistics over the 90 pre-calculated scenarios, one row per fleet, computed in this page from the figures above. Change is emissions-aware against distance-only tier-1 CO2-e per request, paired by seed. The interval is a bootstrap 95 percent interval of the median change (2,000 resamples, fixed seed). The sign test is exact and two-sided. The pre-registered results on the poster use a Wilcoxon signed-rank test with Holm adjustment on their own seeds, so none of these figures replaces them.</p>
+    <div class="table-scroll">
+      <table id="stats-table" class="day-table">
+        <caption class="visually-hidden">Change in CO2-e per request across seeds, by number of electric trucks</caption>
+        <thead><tr><th scope="col">Electric share of fleet</th><th scope="col">Seeds compared</th><th scope="col">Median change</th><th scope="col">95% interval of the median</th><th scope="col">Seeds where emissions-aware is lower</th><th scope="col">Sign test p</th><th scope="col">Collected on the advised day, mean percent, distance-only and emissions-aware</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <h3>Diesel factor scenarios</h3>
+    <p class="note">The same 90 scenarios re-scored at another diesel factor. Tier-1 CO2-e is diesel kilometres times the factor, and electric trucks count 0 g per km. The plans were made at 1000 g per km and are not re-planned, so this is what the same routes would emit, not what a planner told another factor would choose. The factors are the project's driving scenarios: low 780 (ABS Survey of Motor Vehicle Use 2020, rigid trucks), central 1000 (an unsourced assumption), high 1140 (derived from NREL low-speed refuse-style cycle data) and stress 1300 (Argonne GREET, Class 8a refuse truck, includes stationary fuel).</p>
+    <fieldset class="rawarm"><legend>Diesel factor</legend>
+      <div class="seg" role="radiogroup">
+        <label><input type="radio" name="factor" value="low"> Low 780</label>
+        <label><input type="radio" name="factor" value="central" checked> Central 1000</label>
+        <label><input type="radio" name="factor" value="high"> High 1140</label>
+        <label><input type="radio" name="factor" value="stress"> Stress 1300</label>
+      </div>
+    </fieldset>
+    <p class="note">Showing <strong id="factor-now"></strong>, medians over the seeds.</p>
+    <div class="table-scroll">
+      <table id="factor-table" class="day-table">
+        <caption class="visually-hidden">Re-scored CO2-e per request by number of electric trucks</caption>
+        <thead><tr><th scope="col">Electric share of fleet</th><th scope="col">Distance-only, kg per request</th><th scope="col">Emissions-aware, kg per request</th><th scope="col">Median change</th><th scope="col">Seeds where emissions-aware is lower</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="rawdata" id="rawdata" aria-labelledby="raw-h" hidden>
+    <h2 id="raw-h"><span class="scope-pill scope-run">Whole run</span> Planner input and output</h2>
+    <p class="note">The files behind the maps above, for the scenario, electric trucks and plan chosen at the top. The output is the planner's <code>solution.json</code>, as described in the contract below. The input is what the planner was given, taken from the same file: the resolved settings, every request that arrived (with its location, volume and arrival day) and the intake outcomes for flagged and rejected requests. Coordinates in the requests are latitude then longitude.</p>
+    <div class="raw-controls">
+      <fieldset class="rawarm"><legend>Plan</legend>
+        <div class="seg" role="radiogroup">
+          <label><input type="radio" name="rawarm" value="distance" checked> Distance-only</label>
+          <label><input type="radio" name="rawarm" value="emissions"> Emissions-aware</label>
+        </div>
+      </fieldset>
+      <button id="raw-view-in" type="button">View input</button>
+      <button id="raw-view-out" type="button">View output</button>
+      <button id="raw-dl-in" type="button">Download input</button>
+      <button id="raw-dl-out" type="button">Download output (solution.json)</button>
+      <a id="raw-gz" class="rawlink" href="#" hidden>Download compressed original</a>
+    </div>
+    <p id="raw-status" class="note" aria-live="polite"></p>
+    <div id="raw-summary" class="diff"></div>
+    <div class="table-scroll" id="raw-table-wrap" hidden>
+      <table id="raw-table" class="day-table">
+        <caption id="raw-table-cap" class="visually-hidden">Requests</caption>
+        <thead></thead><tbody></tbody>
+      </table>
+    </div>
+    <pre id="raw-view" class="raw-view" tabindex="0" hidden></pre>
+    <h3>The contract</h3>
+    <p class="note">The output follows <a href="contract/SOLUTION_CONTRACT.md">the solution.json contract</a> (version 1), which a run checks itself against with <a href="contract/solution_v1.json">this JSON Schema</a> before it counts as finished. Every submitted request appears in it with exactly one outcome: collected, outstanding, flagged or rejected at intake. These runs are descriptive, not pre-registered results.</p>
+    <table class="day-table contract-table">
+      <caption class="visually-hidden">Top level keys of solution.json</caption>
+      <thead><tr><th scope="col">Key</th><th scope="col">What it holds</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">config</th><td>the resolved run settings</td></tr>
+        <tr><th scope="row">manifest</th><td>commit, settings hash, software versions, seed</td></tr>
+        <tr><th scope="row">arrivals</th><td>every request that arrived</td></tr>
+        <tr><th scope="row">flagged, rejected</th><td>intake outcomes with a reason code</td></tr>
+        <tr><th scope="row">daily</th><td>one entry per simulated day</td></tr>
+        <tr><th scope="row">collected</th><td>every request collected, with its day and wait</td></tr>
+        <tr><th scope="row">day_routes</th><td>the routes each truck drives, by day</td></tr>
+        <tr><th scope="row">kpis</th><td>headline figures for the measured days</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+
+  <section class="live" id="live" aria-labelledby="live-h" hidden>
+    <h2 id="live-h">Live plan</h2>
+    <div id="live-hosted" class="live-hosted status-box" hidden>
+      <div class="sb-head"><span id="sb-dot" class="sb-dot" aria-hidden="true"></span><strong id="sb-state">Checking the live server</strong></div>
+      <p id="live-server" class="live-server" aria-live="polite"></p>
+      <ul class="sb-checks" aria-label="Services">
+        <li id="sb-osrm" class="sb-check">Road network, OSRM</li>
+        <li id="sb-vroom" class="sb-check">Route planner, VROOM</li>
+        <li id="sb-done" class="sb-check sb-count"></li>
+      </ul>
+      <div id="sb-run" class="sb-run" hidden>
+        <p class="sb-run-h"><span class="sb-spin" aria-hidden="true"></span><strong>Planning now</strong> <span id="sb-run-what"></span></p>
+        <div class="sb-bars">
+          <span class="sb-arm">Distance-only</span><progress id="sb-prog-distance" max="1" value="0"></progress><output id="sb-day-distance"></output>
+          <span class="sb-arm">Emissions-aware</span><progress id="sb-prog-emissions" max="1" value="0"></progress><output id="sb-day-emissions"></output>
+        </div>
+      </div>
+      <p id="live-queue" class="live-queue" aria-live="polite"></p>
+    </div>
+    <form id="live-form" hidden>
+      <p id="live-intro">Pick the requests and the trucks, then run the real planner, both plans at once. A 5 day run takes under half a minute. Runs queue one at a time. Tap <span class="info-inline" aria-hidden="true">i</span> to see what a setting changes.</p>
+      <div class="live-fields">
+        <fieldset class="live-group"><legend>Requests</legend>
+          <div class="live-field wide"><span class="field-label"><label for="live-seed">Random seed</label><button type="button" class="info-btn" aria-label="What random seed changes" aria-expanded="false" aria-controls="info-seed">i</button><span id="info-seed" class="info-tip" role="tooltip">Picks the random requests: where they are, how big and which day they arrive. Both plans get the same requests, so the comparison is fair. The same seed and settings give the same run again.</span></span><input id="live-seed" type="number" min="1" max="2147483647" step="1" value="7" inputmode="numeric"></div>
+          <div class="live-field"><span class="field-label"><label for="live-arrivals">Requests a day (0 to 100)</label><button type="button" class="info-btn" aria-label="What requests a day changes" aria-expanded="false" aria-controls="info-arrivals">i</button><span id="info-arrivals" class="info-tip" role="tooltip">New collection requests each business day. The project tested 15 to 50. Above that a small fleet falls behind, and once about 1,400 requests wait the run stops early.</span></span><input id="live-arrivals" type="number" min="0" max="100" step="1" value="25" inputmode="numeric"></div>
+          <div class="live-field"><span class="field-label"><label for="live-days">Measured days</label><button type="button" class="info-btn" aria-label="What measured days changes" aria-expanded="false" aria-controls="info-days">i</button><span id="info-days" class="info-tip" role="tooltip">Days counted in the totals, after 3 warm-up days that fill the backlog. Longer runs take longer.</span></span><select id="live-days"><option value="5" selected>5 days</option><option value="10">10 days</option><option value="20">20 days</option><option value="30">30 days</option><option value="40">40 days</option></select></div>
+        </fieldset>
+        <fieldset class="live-group"><legend>Trucks</legend>
+          <div class="live-field"><span class="field-label"><label for="live-ev">Electric trucks</label><button type="button" class="info-btn" aria-label="What electric trucks changes" aria-expanded="false" aria-controls="info-ev">i</button><span id="info-ev" class="info-tip" role="tooltip">Battery-electric trucks with an 11 m3 body. Each may drive up to 110 km a day in the plan, a planning distance, not its battery range. No tailpipe CO2-e. One to six trucks in all.</span></span><select id="live-ev"><option>0</option><option selected>1</option><option>2</option><option>3</option><option>4</option></select></div>
+          <div class="live-field"><span class="field-label"><label for="live-diesel">Diesel trucks</label><button type="button" class="info-btn" aria-label="What diesel trucks changes" aria-expanded="false" aria-controls="info-diesel">i</button><span id="info-diesel" class="info-tip" role="tooltip">Diesel trucks with an 11 m3 body and no daily distance limit. Their driving is where the CO2-e comes from. One to six trucks in all.</span></span><select id="live-diesel"><option>0</option><option>1</option><option>2</option><option selected>3</option><option>4</option></select></div>
+          <div class="live-field"><span class="field-label"><label for="live-compaction">Compaction</label><button type="button" class="info-btn" aria-label="What compaction changes" aria-expanded="false" aria-controls="info-compaction">i</button><span id="info-compaction" class="info-tip" role="tooltip">How much more each truck holds if it squashes the load, so it fills up later in the day. The real ratio for reuse items is unknown, so these are what-if values. Off is the project's model.</span></span><select id="live-compaction"><option value="1" selected>Off (11 m3 body)</option><option value="1.25">1.25 times (13.75 m3)</option><option value="1.5">1.5 times (16.5 m3)</option><option value="2">2 times (22 m3)</option></select></div>
+          <div class="live-field"><span class="field-label"><label for="live-factor">Diesel emission factor</label><button type="button" class="info-btn" aria-label="What diesel emission factor changes" aria-expanded="false" aria-controls="info-factor">i</button><span id="info-factor" class="info-tip" role="tooltip">Grams of CO2-e per diesel km. Both plans report their emissions at this rate, and the emissions-aware plan also prices diesel km with it, so its routes can change a little. Central is the project's value, the others are its sensitivity range.</span></span><select id="live-factor"><option value="low">Low, 780 g per km</option><option value="central" selected>Central, 1000 g per km</option><option value="high">High, 1140 g per km</option><option value="stress">Stress, 1300 g per km</option></select></div>
+        </fieldset>
+      </div>
+      <div class="live-actions">
+      <button id="live-go" type="submit">Re-plan now</button>
+      <button id="live-shuffle" type="button" class="secondary">Randomise settings</button>
+      </div>
+      <div class="progress" aria-live="polite">
+        <progress id="live-progress" max="1" value="0" hidden></progress>
+        <span id="live-status"></span>
+      </div>
+    </form>
+  </section>
+  <section class="intake" id="intake" aria-labelledby="intake-h" hidden>
+    <h2 id="intake-h">Intake check</h2>
+    <p class="note">Every request is checked once when it arrives, before it is routed. This sends one request to the planner's own intake code. Admitted requests join the plan. Flagged requests are real but need manual handling, so they are kept and reported, never silently dropped. Rejected records cannot be placed or served at all. Click the map to place a point, or use an example. Available while the live server is on.</p>
+    <div id="intake-map" class="intake-map" role="img" aria-label="Map of the council area to place a request on"></div>
+    <div class="live-grid">
+      <label for="intake-lat">Latitude</label><input id="intake-lat" type="text" inputmode="decimal" autocomplete="off">
+      <label for="intake-lon">Longitude</label><input id="intake-lon" type="text" inputmode="decimal" autocomplete="off">
+      <label for="intake-vol">Volume, m3</label><input id="intake-vol" type="text" inputmode="decimal" autocomplete="off">
+      <label class="inline"><input id="intake-noday" type="checkbox"> No arrival day</label>
+    </div>
+    <div class="raw-controls">
+      <button id="intake-go" type="button">Check request</button>
+      <button type="button" data-intake="inside">Example: inside</button>
+      <button type="button" data-intake="outside">Outside the council area</button>
+      <button type="button" data-intake="over">Over the volume cap</button>
+      <button type="button" data-intake="novolume">No volume</button>
+      <button type="button" data-intake="nocoords">No coordinates</button>
+      <button type="button" data-intake="noday">No arrival day</button>
+    </div>
+    <p id="intake-result" class="intake-result" aria-live="polite"></p>
+  </section>
+</main>
+
+<!-- Leaflet 1.9.4 is the only external script (task 063). A local copy in vendor/ is the
+     offline fallback, added on the laptop (docs/DEMO.md). -->
+<!-- The integrity hash is cdnjs's published sha512 for this file, and equal to the hash of
+     vendor/leaflet.js (checked 2026-10-31). A changed file fails to load and the page falls back
+     to the local copy below. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"
+        integrity="sha512-puJW3E/qXDqYp9IfhAI54BJEaWIfloJ7JWs7OeD5i6ruC9JZL1gERT1wjtwXFlh7CjE7ZJ+/vcRZRkIYIb6p4g==" crossorigin="anonymous"></script>
+<script>if (!window.L) document.write('<script src="vendor/leaflet.js"><\/script>');</script>
+<script src="layers.js"></script>
+<script src="seeds/seeds.js"></script>
+<!-- Addresses of the web live plan (scripts/cloud/live_replan/). Absent or empty, the hosted
+     page keeps the "presenter's laptop" line. -->
+<script src="live-config.js"></script>
+<script src="app.js"></script>
+<script src="info.js"></script>
+<script src="extras.js"></script>
+<script src="fold.js"></script>
+<script src="tables.js"></script>
+<script src="diff.js"></script>
+<script src="deeplink.js"></script>
+<script src="polish.js"></script>
+<script src="tour.js"></script>
+<script src="kiosk.js"></script>
+</body>
+</html>

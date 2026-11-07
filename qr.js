@@ -15,14 +15,4 @@
   } else {
     box.textContent = PAGE;
   }
-  var full = document.getElementById("qr-full");
-  if (full) full.addEventListener("click", function () {
-    var el = box.closest(".qr-section");
-    if (el.requestFullscreen) el.requestFullscreen().catch(function () { el.classList.toggle("qr-expanded"); });
-    else el.classList.toggle("qr-expanded");
-  });
-  // Esc closes the fallback overlay too, as it closes real full screen.
-  document.addEventListener("keydown", function (ev) {
-    if (ev.key === "Escape") box.closest(".qr-section").classList.remove("qr-expanded");
-  });
 })();

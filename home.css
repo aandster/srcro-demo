@@ -1,0 +1,70 @@
+/* Home page hero, tour card and route sketch (expo, 2026-11-01). */
+:root { --hm-ev: #0072B2; --hm-diesel: #D55E00; --hm-on-accent: #FFFFFF; }
+@media (prefers-color-scheme: dark) { :root { --hm-ev: #56B4E9; --hm-diesel: #FF9A52; --hm-on-accent: #0B1A24; } }
+.home-hero { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) 210px; gap: 8px 24px; align-items: center;
+  padding: 12px 20px; border: 1px solid var(--rule); border-radius: 12px; background: var(--panel); }
+.home-hero-text { min-width: 0; }
+.home-lead { margin: 0 0 8px; font-size: 19px; line-height: 1.4; }
+.home-kicker { margin: 0 0 8px; color: var(--muted); font-size: 14px; }
+.home-tiles { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+/* Figures, not buttons: no box, no hover, a rule on the left groups each figure with its fleet. */
+.home-tile { position: relative; display: flex; flex-direction: column; gap: 4px; height: 100%; padding: 4px 0 4px 14px;
+  border-left: 3px solid var(--rule); color: var(--ink); }
+/* In the flow above the figure, not pinned top right, where it ran over the number on tiles between
+   about 860 and 1100 px wide, and shown on phones too, where the colour key above names it. */
+.home-fleet { display: block; margin-bottom: 2px; }
+.home-ev { fill: var(--hm-ev); }
+.home-diesel { fill: var(--hm-diesel); }
+.home-fig { line-height: 1.05; }
+.home-num { font-size: 46px; font-weight: 800; letter-spacing: -0.01em; }
+.home-num-text { font-size: 36px; }
+.home-unit { font-size: 16px; font-weight: 600; color: var(--muted); }
+.home-what { font-size: 14px; line-height: 1.35; }
+.home-tag { margin-top: auto; padding-top: 2px; font-size: 12px; color: var(--muted); }
+.home-tag.home-rep { margin-top: 0; padding-top: 0; }
+.home-key { margin: 8px 0 0; font-size: 13px; color: var(--muted); }
+.home-sketch { margin: 0; text-align: center; }
+.home-sketch[hidden] { display: none; }
+.home-sketch-svg { display: block; width: 100%; max-width: 210px; height: auto; margin: 0 auto; }
+.home-sketch figcaption { margin-top: 4px; font-size: 12px; color: var(--muted); }
+.sk-area { fill: var(--accent); fill-opacity: .08; }
+.sk-edge { fill: none; stroke: var(--muted); stroke-width: 1.4; }
+.sk-minor { fill: none; stroke: var(--road); stroke-width: .6; stroke-linejoin: round; }
+.sk-major { fill: none; stroke: var(--muted); stroke-width: 1.2; stroke-linejoin: round; stroke-linecap: round; }
+.sk-depot { fill: var(--ink); stroke: var(--panel); stroke-width: 1.5; }
+
+main.home { gap: 14px; }
+/* The tour card leads the grid, two columns wide, filled with the accent colour. A card for every
+   page in the top bar (Jordan, 2026-11-01), so three columns hold the tour and seven pages in
+   three full rows. */
+main.home .home-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+main.home .home-tour { grid-column: span 2; }
+.home-tour { background: var(--accent); border-color: var(--accent); }
+.home-tour h2, .home-tour p { color: var(--hm-on-accent); }
+.home-tour:hover, .home-tour:focus-visible { filter: brightness(1.08); }
+@media (max-width: 1000px) {
+  main.home .home-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .home-tour { grid-column: 1 / -1; }
+}
+@media (max-width: 560px) { main.home .home-cards { grid-template-columns: 1fr; } main.home .home-tour { grid-column: auto; } }
+
+@media (max-width: 860px) {
+  .home-hero { grid-template-columns: 1fr; padding: 14px; }
+  .home-lead { font-size: 17px; }
+  .home-tiles { grid-template-columns: 1fr; gap: 8px; }
+  .home-tile { padding: 4px 0 4px 12px; }
+  .home-num { font-size: 34px; }
+  .home-num-text { font-size: 30px; }
+}
+
+/* Live server badge on the Live Plan card (Jordan, 2026-11-01). */
+.home-card { position: relative; }
+.live-badge { position: absolute; top: 14px; right: 14px; display: inline-flex; align-items: center; gap: 6px;
+  padding: 2px 10px 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; line-height: 1.6; }
+.live-badge[hidden] { display: none; }
+.live-badge::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.lb-on { color: #2EAD6B; background: rgba(46, 173, 107, .14); }
+.lb-on::before { animation: sb-pulse 2s infinite; }
+.lb-wait { color: #E0A030; background: rgba(224, 160, 48, .14); }
+.lb-off { color: var(--muted); background: rgba(128, 128, 128, .14); }
+@media (prefers-reduced-motion: reduce) { .lb-on::before { animation: none; } }

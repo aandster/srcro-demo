@@ -1,0 +1,59 @@
+/* Phone fit and finish (Jordan, 2026-11-01). Loaded after style.css. Nothing here changes the layout
+   at desktop widths. Tables never scroll sideways (Jordan, 2026-11-01), so a table that is too wide for
+   its card becomes labelled cards, as the tables of style.css already do below 760 px. */
+
+/* Long links and words wrap instead of widening the page. */
+.ref-cite, .ref-use, .credit-list dd, .credit-list dt { overflow-wrap: anywhere; }
+.ref-cite a { overflow-wrap: anywhere; word-break: break-all; }
+.note, .claims li, .source-note { overflow-wrap: anywhere; }
+
+/* A fieldset never grows past its card, which is what pushed the segmented controls out. */
+fieldset { min-width: 0; max-width: 100%; }
+
+/* The radio groups wrap onto further lines when the card is too narrow, and each part grows to fill
+   its line. A 1 px gap in the rule colour replaces the divider lines, so a wrapped control has no
+   double borders. The pressed and checked colours of style.css still win. */
+@media (max-width: 480px) {
+  .basemap .seg, .rawarm .seg { display: flex; flex-wrap: wrap; max-width: 100%; gap: 1px; background: var(--rule); }
+  .basemap .seg label, .rawarm .seg label { flex: 1 1 auto; justify-content: center; border-right: 0; padding: 0 10px; background: var(--panel); }
+  .basemap .seg label:has(input:checked), .rawarm .seg label:has(input:checked) { background: var(--accent, #8DB8DD); }
+}
+
+/* Same rule as demo/diff.css, so the fleet buttons fit whichever lands first. */
+@media (max-width: 560px) { #fleet-buttons button { min-width: 40px; padding: 0 8px; } }
+
+/* Tables outside a .table-scroll card (the whole run and day tables, the contract table) take the same
+   labelled card layout on phones. tables.js already labels every cell. */
+@media (max-width: 760px) {
+  .compare .day-table, .rawdata .contract-table { max-width: none; border: 1px solid var(--rule); border-radius: 6px; }
+  .compare .day-table, .compare .day-table tbody, .compare .day-table tr, .compare .day-table th, .compare .day-table td,
+  .rawdata .contract-table, .rawdata .contract-table tbody, .rawdata .contract-table tr, .rawdata .contract-table th, .rawdata .contract-table td { display: block; width: 100%; }
+  .compare .day-table thead, .rawdata .contract-table thead { display: none; }
+  .compare .day-table tr, .rawdata .contract-table tr { padding: 8px 10px; border-bottom: 1px solid var(--rule); }
+  .compare .day-table td, .compare .day-table th[scope="row"], .rawdata .contract-table td, .rawdata .contract-table th[scope="row"] { border: 0 !important; padding: 2px 0 !important; text-align: left !important; }
+  .compare .day-table th[scope="row"], .rawdata .contract-table th[scope="row"] { font-size: 16px; margin-bottom: 4px; }
+  .compare .day-table td[data-label]::before { content: attr(data-label); display: block; font-size: 12px; color: var(--muted); font-weight: 600; white-space: normal; overflow-wrap: anywhere; }
+}
+
+/* The solver tables need about 1100 px, so they stay as cards up to that width instead of scrolling. */
+@media (min-width: 761px) and (max-width: 1180px) {
+  .table-scroll .solver-table, .table-scroll .solver-table tbody, .table-scroll .solver-table tr, .table-scroll .solver-table th, .table-scroll .solver-table td { display: block; width: 100%; }
+  .table-scroll .solver-table thead { display: none; }
+  .table-scroll .solver-table tr { padding: 8px 10px; border-bottom: 1px solid var(--rule); }
+  .table-scroll .solver-table tr[hidden] { display: none; }
+  .table-scroll .solver-table td, .table-scroll .solver-table th[scope="row"] { border: 0 !important; padding: 2px 0 !important; text-align: left !important; max-width: none !important; min-width: 0 !important; }
+  .table-scroll .solver-table th[scope="row"] { font-size: 16px; margin-bottom: 4px; }
+  .table-scroll .solver-table td[data-label]::before { content: attr(data-label); display: block; font-size: 12px; color: var(--muted); font-weight: 600; white-space: normal; overflow-wrap: anywhere; }
+}
+@media (max-width: 760px) { .table-scroll .solver-table th[scope="row"] { min-width: 0; } }
+
+/* Top tab strip. It scrolls sideways, and a fade at the edge that has more behind it shows there is more. */
+.tabs { -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+.tabs.fade-end { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent); }
+.tabs.fade-start { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 40px), transparent); }
+.tabs.fade-start.fade-end { -webkit-mask-image: linear-gradient(to right, transparent, #000 40px, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(to right, transparent, #000 40px, #000 calc(100% - 40px), transparent); }
+
+/* Playback bar keeps one width whatever the time label says (Jordan, 2026-11-01). The longest label is
+   "Day 20 / 20 · start of day", so the label gets a fixed box that size and the slider no longer jumps. */
+.player-time { flex: 0 0 29ch; width: 29ch; min-width: 29ch; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 560px) { .player-time { flex: 1 1 100%; width: 100%; min-width: 0; text-align: left; } }
